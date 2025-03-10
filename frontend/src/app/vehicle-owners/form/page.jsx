@@ -26,7 +26,14 @@ const VehicleOwnerForm = () => {
                 updateMutation.mutate(values);
             }
             else {
-                mutation.mutate(values);
+                mutation.mutate({
+                    fullname: values.fullname,
+                    city: values.city,
+                    dob: values.dob,
+                    gender: values.gender,
+                    email: values.email,
+                    contact: values.contact
+                });
             }
         },
         validationSchema: vehicleOwnerSchema

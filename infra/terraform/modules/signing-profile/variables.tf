@@ -1,0 +1,9 @@
+variable "platform_id" {}
+variable "signature_validity_value" {}
+variable "signature_validity_type" {}
+variable "untrusted_artifact_on_deployment" {}
+variable "ignore_signing_job_failure" {}
+variable "s3_bucket_source" {}
+variable "s3_bucket_key" {}
+variable "s3_bucket_version" {}
+variable "s3_bucket_destination" {}

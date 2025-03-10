@@ -94,6 +94,7 @@ const InventoryForm = () => {
                 updateMutation.mutate(values);
             }
             else {
+                delete values.id;
                 mutation.mutate(values);
             }
         }

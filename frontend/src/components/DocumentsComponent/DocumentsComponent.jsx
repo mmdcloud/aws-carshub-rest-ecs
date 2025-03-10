@@ -24,7 +24,7 @@ const DocumentsComponent = ({ data }) => {
           <Link
             target="_blank"
             key={index}
-            href={process.env.CLOUDFRONT_DISTRIBUTION_URL+"/"+item.path}
+            href={"https://"+process.env.CDN_URL+"/"+item.path}
             className="flex items-center gap-5 px-7.5 py-3 hover:bg-gray-3 dark:hover:bg-meta-4"
           >
             <div className="relative h-14 w-14 rounded-full">

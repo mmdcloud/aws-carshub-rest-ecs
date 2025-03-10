@@ -22,7 +22,10 @@ const VehicleModelForm = () => {
                 updateMutation.mutate(values);
             }
             else {
-                mutation.mutate(values);
+                mutation.mutate({
+                    name: values.name,
+                    brandId: values.brandId
+                });
             }
         },
         validationSchema: vehicleModelSchema

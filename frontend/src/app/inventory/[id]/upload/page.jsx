@@ -31,20 +31,20 @@ const Upload = () => {
             var response = await axiosInstance.post("inventory/getSignedUrl", {
                 file: (payload.type == "Image" ? "images/" : "documents/") + payload.files[0].name,
                 type: payload.type,
+                mime_type:payload.files[0].type,
                 description: payload.description,
-                inventoryId: params.id
-            });
-            console.log(payload.type);
-            console.log(payload.description);
-            console.log(params.id);
-            return axiosInstanceWithBlob.put(response.data.body, payload.files[0], {
-                headers: {
-                    'Content-Type': payload.files[0].type,
-                    "x-amz-meta-typeofdocument": payload.type,
-                    "x-amz-meta-descriptionofdocument": payload.description,
-                    "x-amz-meta-inventoryid": params.id.toString(),
+                inventoryId: params.id.toString()
+            });                        
+            return axiosInstanceWithBlob.put(response.data, payload.files[0],
+                    {
+                    headers: {
+                        'content-type': payload.files[0].type,
+                        'x-goog-meta-typeofdocument': payload.type,
+                        'x-goog-meta-descriptionofdocument': payload.description,
+                        'x-goog-meta-inventoryid': params.id.toString()
+                    }
                 }
-            });
+            );
         },
         onSuccess: (data, variables, context) => {
             toast.success("Uploaded successfully !");

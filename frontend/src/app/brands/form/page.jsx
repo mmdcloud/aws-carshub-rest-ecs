@@ -22,7 +22,10 @@ const BrandForm = () => {
         updateMutation.mutate(values);
       }
       else {
-        mutation.mutate(values);
+        mutation.mutate({
+          name: values.name,
+          countryOfOrigin: values.countryOfOrigin
+        });
       }
     },
     validationSchema: brandSchema

@@ -27,7 +27,15 @@ const UserForm = () => {
                 updateMutation.mutate(values);
             }
             else {
-                mutation.mutate(values);
+                mutation.mutate({
+                    fullname: values.fullname,
+                    city: values.city,
+                    dob: values.dob,
+                    gender: values.gender,
+                    email: values.email,
+                    contact: values.contact,
+                    password: values.password
+                });
             }
         },
         validationSchema: userSchema

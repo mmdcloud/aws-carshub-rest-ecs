@@ -2,7 +2,7 @@ import axios from 'axios';
 
 const axiosBlob = axios.create({
 	// Configuration
-	baseURL: "https://" + process.env.BASE_URL,
+	baseURL: process.env.END_URL,
 	// baseURL:"http://localhost:3002",
 	timeout: 30000,
 	responseType:"blob"	
