@@ -1,13 +1,18 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
     output: "standalone",
-    env: {
-        END_URL: process.env.END_URL
+    env : {
+        BASE_URL:process.env.BASE_URL,
+        CDN_URL:process.env.CDN_URL
     },
     images: {
         remotePatterns: [
             {
                 hostname: "picsum.photos",
+                protocol: "https"
+            },
+            {
+                hostname: process.env.CDN_URL,
                 protocol: "https"
             }
         ]

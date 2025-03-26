@@ -14,7 +14,6 @@ variable "service_cluster" {}
 variable "service_launch_type" {}
 variable "service_scheduling_strategy" {}
 variable "service_desired_count" {}
-variable "service_force_new_deployment" {}
 
 variable "deployment_controller_type" {}
 

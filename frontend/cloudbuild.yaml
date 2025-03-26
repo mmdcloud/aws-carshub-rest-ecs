@@ -1,5 +1,5 @@
 steps:
-  # Step 1: Set up Docker image build and push to Google Artifact Registry (GCR)
+  # Step 1: Set up Docker image build and push to Google Artifact Registry
   - name: "gcr.io/cloud-builders/docker"
     args:
       [
@@ -23,7 +23,7 @@ steps:
       - "gcloud"
       - "run"
       - "deploy"
-      - "carshub-frontend-app"
+      - "carshub-frontend"
       - "--image"
       - "us-central1-docker.pkg.dev/carshub-447206/carshub-frontend/carshub-frontend:$COMMIT_SHA"
       - "--region"

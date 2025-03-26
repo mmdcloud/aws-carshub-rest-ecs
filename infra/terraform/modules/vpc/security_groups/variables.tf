@@ -8,6 +8,7 @@ variable "ingress" {
     self        = string
     cidr_blocks = list(string)
     description = string
+    security_groups = set(string)
   }))
 }
 variable "egress" {

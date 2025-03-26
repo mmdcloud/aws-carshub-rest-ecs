@@ -1,0 +1,44 @@
+{'Records': [
+        {'messageId': '2c03b800-4551-4289-a1d8-26fc9d1b595f', 'receiptHandle': 'AQEBSeagcexUKzgeKCueie7poJeyzKtisIQQnvuaK1F3u7da0EbI7kGs1doJxqXzqspNVGPZzlqg4jq7ODgrU+zfi0e+G8iG4HQ2FXONUhl5+P7c7/hcJgJ64EkI/bL6o3QSHf1IM7GNRHxc+PcbOx1RHwwJpWv2SnicJ9Fij03Bc2dC3HpWqTnbc08BqMfBOFbW9YJKtQlgOQ0YERftYx4jggE3fWTUDvB9B6XqqERNPVYBU9yOkIAweVcayFZDW0A1ci9u7ojov/2Rla/GixTwiBMHYffzRz4YVsCHEJLytG7fjtLZlKMk+lnZpEUvKL4yRTwEUP8+jLtSK08yfT4aZ/jfca+BQo3U4TKOfmwEN9yvcx0gYyuVp54sWwynmorSxLVpTzVAv0IX3V0ogH1TIA==', 'body': '{
+                "Records": [
+                    {
+                        "eventVersion": "2.1",
+                        "eventSource": "aws:s3",
+                        "awsRegion": "us-east-1",
+                        "eventTime": "2025-03-26T04:47:22.349Z",
+                        "eventName": "ObjectCreated:Put",
+                        "userIdentity": {
+                            "principalId": "A3AMA9HKPPRPL3"
+                        },
+                        "requestParameters": {
+                            "sourceIPAddress": "106.214.47.212"
+                        },
+                        "responseElements": {
+                            "x-amz-request-id": "YSCR1275YF8DZYTE",
+                            "x-amz-id-2": "fYEbyVgaE3hi258Jnk3HRRI6Ccir/n/d75MGWUNMyBv1gZhj9jlcpx9mj13LIBPwKLOKUQxYhIYvMdNdS2QeLHwiH/bP1D2IkyUu01rlylY="
+                        },
+                        "s3": {
+                            "s3SchemaVersion": "1.0",
+                            "configurationId": "tf-s3-queue-20250326034828622500000009",
+                            "bucket": {
+                                "name": "carshubmediabucket",
+                                "ownerIdentity": {
+                                    "principalId": "A3AMA9HKPPRPL3"
+                                },
+                                "arn": "arn:aws:s3:::carshubmediabucket"
+                            },
+                            "object": {
+                                "key": "images/image-1.jpg",
+                                "size": 53663,
+                                "eTag": "44a07032095aa277b59ef09bebba8728",
+                                "versionId": "PeHfE45rBqbqWheS32VI.5N4C2QSxMNX",
+                                "sequencer": "0067E386DA42616F1A"
+                            }
+                        }
+                    }
+                ]
+            }', 'attributes': {'ApproximateReceiveCount': '1', 'SentTimestamp': '1742964442838', 'SenderId': 'AROA4R74ZO52XAB5OD7T4:S3-PROD-END', 'ApproximateFirstReceiveTimestamp': '1742964442845'
+            }, 'messageAttributes': {}, 'md5OfMessageAttributes': None, 'md5OfBody': 'fbd651e7823c7bb715ce9735e9df2d58', 'eventSource': 'aws:sqs', 'eventSourceARN': 'arn:aws:sqs:us-east-1: 577638377048:carshub-media-events-queue', 'awsRegion': 'us-east-1'
+        }
+    ]
+}

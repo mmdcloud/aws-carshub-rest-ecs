@@ -14,18 +14,94 @@ module "carshub_vpc" {
 }
 
 # Security Group
-module "carshub_sg" {
+module "carshub_frontend_lb_sg" {
   source = "./modules/vpc/security_groups"
   vpc_id = module.carshub_vpc.vpc_id
-  name   = "carshub_sg"
+  name   = "carshub_frontend_lb_sg"
   ingress = [
+    {
+      from_port       = 80
+      to_port         = 80
+      protocol        = "tcp"
+      self            = "false"
+      cidr_blocks     = ["0.0.0.0/0"]
+      security_groups = []
+      description     = "any"
+    }
+  ]
+  egress = [
     {
       from_port   = 0
       to_port     = 0
-      protocol    = -1
-      self        = "false"
+      protocol    = "-1"
       cidr_blocks = ["0.0.0.0/0"]
-      description = "any"
+    }
+  ]
+}
+
+module "carshub_backend_lb_sg" {
+  source = "./modules/vpc/security_groups"
+  vpc_id = module.carshub_vpc.vpc_id
+  name   = "carshub_backend_lb_sg"
+  ingress = [
+    {
+      from_port       = 80
+      to_port         = 80
+      protocol        = "tcp"
+      self            = "false"
+      cidr_blocks     = ["0.0.0.0/0"]
+      security_groups = []
+      description     = "any"
+    }
+  ]
+  egress = [
+    {
+      from_port   = 0
+      to_port     = 0
+      protocol    = "-1"
+      cidr_blocks = ["0.0.0.0/0"]
+    }
+  ]
+}
+
+module "carshub_ecs_frontend_sg" {
+  source = "./modules/vpc/security_groups"
+  vpc_id = module.carshub_vpc.vpc_id
+  name   = "carshub_ecs_frontend_sg"
+  ingress = [
+    {
+      from_port       = 3000
+      to_port         = 3000
+      protocol        = "tcp"
+      self            = "false"
+      cidr_blocks     = []
+      security_groups = [module.carshub_frontend_lb_sg.id]
+      description     = "any"
+    }
+  ]
+  egress = [
+    {
+      from_port   = 0
+      to_port     = 0
+      protocol    = "-1"
+      cidr_blocks = ["0.0.0.0/0"]
+    }
+  ]
+}
+
+module "carshub_ecs_backend_sg" {
+  source = "./modules/vpc/security_groups"
+  vpc_id = module.carshub_vpc.vpc_id
+  name   = "carshub_ecs_backend_sg"
+  ingress = [
+    {
+      from_port       = 80
+      to_port         = 80
+      protocol        = "tcp"
+      self            = "false"
+      cidr_blocks     = []
+      security_groups = [module.carshub_backend_lb_sg.id]
+      description     = "any"
     }
   ]
   egress = [
@@ -45,12 +121,13 @@ module "carshub_rds_sg" {
   name   = "carshub_rds_sg"
   ingress = [
     {
-      from_port   = 3306
-      to_port     = 3306
-      protocol    = "tcp"
-      self        = "false"
-      cidr_blocks = ["0.0.0.0/0"]
-      description = "any"
+      from_port       = 3306
+      to_port         = 3306
+      protocol        = "tcp"
+      self            = "false"
+      cidr_blocks     = []
+      security_groups = [module.carshub_ecs_backend_sg.id]
+      description     = "any"
     }
   ]
   egress = [
@@ -130,6 +207,15 @@ module "carshub_private_rt" {
   vpc_id  = module.carshub_vpc.vpc_id
 }
 
+# Nat Gateway
+# module "carshub_nat" {
+#   source      = "./modules/vpc/nat"
+#   subnets     = module.carshub_public_subnets.subnets[*]
+#   eip_name    = "carshub_vpc_nat_eip"
+#   nat_gw_name = "carshub_vpc_nat"
+#   domain      = "vpc"
+# }
+
 # Secrets Manager
 module "carshub_db_credentials" {
   source                  = "./modules/secrets-manager"
@@ -149,7 +235,7 @@ module "carshub_frontend_container_registry" {
   force_delete         = true
   scan_on_push         = false
   image_tag_mutability = "MUTABLE"
-  bash_command         = "bash ${path.cwd}/../../frontend/artifact_push.sh carshub_frontend ${var.region}"
+  bash_command         = "bash ${path.cwd}/../../frontend/artifact_push.sh carshub_frontend ${var.region} http://${module.carshub_backend_lb.lb_dns_name} ${module.carshub_media_cloudfront_distribution.domain_name}"
   name                 = "carshub_frontend"
 }
 
@@ -230,12 +316,17 @@ module "carshub_media_bucket" {
   })
   force_destroy = true
   bucket_notification = {
-    queue = []
-    lambda_function = [
+    queue = [
       {
-        lambda_function_arn = module.carshub_media_update_function.arn
-        events              = ["s3:ObjectCreated:*"]
+        queue_arn = module.carshub_media_events_queue.arn
+        events    = ["s3:ObjectCreated:*"]
       }
+    ]
+    lambda_function = [
+      # {
+      #   lambda_function_arn = module.carshub_media_update_function.arn
+      #   events              = ["s3:ObjectCreated:*"]
+      # }
     ]
   }
 }
@@ -337,46 +428,72 @@ module "carshub_media_update_function_iam_role" {
             {
               "Effect": "Allow",
               "Action": "secretsmanager:GetSecretValue",
-              "Resource": "*"
+              "Resource": "${module.carshub_db_credentials.arn}"
             },
             {
                 "Action": "s3:*",
                 "Effect": "Allow",
-                "Resource": "arn:aws:s3:::carshubmediabucket/*"
+                "Resource": "${module.carshub_media_bucket.arn}/*"
+            },
+            {
+              "Action": [
+                "sqs:ReceiveMessage",
+                "sqs:DeleteMessage",
+                "sqs:GetQueueAttributes"
+              ],
+              "Effect"   : "Allow",
+              "Resource" : "${module.carshub_media_events_queue.arn}"
             }
         ]
     }
     EOF
 }
 
-# # SQS Queue for buffering S3 events
-# module "carshub_media_events_queue" {
-#   source                        = "./modules/sqs"
-#   queue_name                    = "carshub-media-events-queue"
-#   delay_seconds                 = 90
-#   deadLetterTargetArn           = ""
-#   delMaxReceiveCount            = ""
-#   dlq_message_retention_seconds = ""
-#   dlq_name                      = ""
-#   max_message_size              = 2048
-#   message_retention_seconds     = 86400
-#   visibility_timeout_seconds    = 0
-#   receive_wait_time_seconds     = 0
-# }
+#  Lambda SQS event source mapping
+resource "aws_lambda_event_source_mapping" "sqs_event_trigger" {
+  event_source_arn                   = module.carshub_media_events_queue.arn
+  function_name                      = module.carshub_media_update_function.arn
+  enabled                            = true
+  batch_size                         = 10
+  maximum_batching_window_in_seconds = 60
+}
+
+# SQS Queue for buffering S3 events
+module "carshub_media_events_queue" {
+  source                        = "./modules/sqs"
+  queue_name                    = "carshub-media-events-queue"
+  delay_seconds                 = 0
+  maxReceiveCount               = 3
+  dlq_message_retention_seconds = 86400
+  dlq_name                      = "carshub-media-events-dlq"
+  max_message_size              = 262144
+  message_retention_seconds     = 345600
+  visibility_timeout_seconds    = 180
+  receive_wait_time_seconds     = 20
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect    = "Allow"
+        Principal = { Service = "s3.amazonaws.com" }
+        Action    = "sqs:SendMessage"
+        Resource  = "arn:aws:sqs:us-east-1:*:carshub-media-events-queue"
+        Condition = {
+          ArnEquals = {
+            "aws:SourceArn" = module.carshub_media_bucket.arn
+          }
+        }
+      }
+    ]
+  })
+}
 
 # Lambda function to update media metadata in RDS database
 module "carshub_media_update_function" {
   source        = "./modules/lambda"
   function_name = "carshub_media_update"
   role_arn      = module.carshub_media_update_function_iam_role.arn
-  permissions = [
-    {
-      statement_id = "AllowExecutionFromS3Bucket"
-      action       = "lambda:InvokeFunction"
-      principal    = "s3.amazonaws.com"
-      source_arn   = module.carshub_media_bucket.arn
-    }
-  ]
+  permissions   = []
   env_variables = {
     SECRET_NAME = module.carshub_db_credentials.name
     DB_HOST     = tostring(split(":", module.carshub_db.endpoint)[0])
@@ -433,12 +550,12 @@ module "carshub_frontend_lb" {
   lb_ip_address_type         = "ipv4"
   load_balancer_type         = "application"
   enable_deletion_protection = false
-  security_groups            = [module.carshub_sg.id]
+  security_groups            = [module.carshub_frontend_lb_sg.id]
   subnets                    = module.carshub_public_subnets.subnets[*].id
   target_groups = [
     {
       target_group_name      = "carshub-frontend-target-group"
-      target_port            = 80
+      target_port            = 3000
       target_ip_address_type = "ipv4"
       target_protocol        = "HTTP"
       target_type            = "ip"
@@ -449,9 +566,9 @@ module "carshub_frontend_lb" {
       health_check_enabled             = true
       health_check_protocol            = "HTTP"
       health_check_timeout             = 5
-      health_check_healthy_threshold   = 5
-      health_check_unhealthy_threshold = 2
-      health_check_port                = 80
+      health_check_healthy_threshold   = 3
+      health_check_unhealthy_threshold = 3
+      health_check_port                = 3000
 
     }
   ]
@@ -477,7 +594,7 @@ module "carshub_backend_lb" {
   lb_ip_address_type         = "ipv4"
   load_balancer_type         = "application"
   enable_deletion_protection = false
-  security_groups            = [module.carshub_sg.id]
+  security_groups            = [module.carshub_backend_lb_sg.id]
   subnets                    = module.carshub_public_subnets.subnets[*].id
   target_groups = [
     {
@@ -493,8 +610,8 @@ module "carshub_backend_lb" {
       health_check_enabled             = true
       health_check_protocol            = "HTTP"
       health_check_timeout             = 5
-      health_check_healthy_threshold   = 5
-      health_check_unhealthy_threshold = 2
+      health_check_healthy_threshold   = 3
+      health_check_unhealthy_threshold = 3
       health_check_port                = 80
     }
   ]
@@ -521,6 +638,63 @@ resource "aws_ecs_cluster" "carshub_cluster" {
   }
 }
 
+# Cloudwatch log groups for ecs service logs
+module "carshub_frontend_ecs_log_group" {
+  source            = "./modules/cloudwatch"
+  log_group_name    = "/ecs/carshub_frontend"
+  retention_in_days = 30
+}
+
+module "carshub_backend_ecs_log_group" {
+  source            = "./modules/cloudwatch"
+  log_group_name    = "/ecs/carshub_backend"
+  retention_in_days = 30
+}
+
+data "aws_iam_policy_document" "s3_put_object_policy_document" {
+  statement {
+    effect    = "Allow"
+    actions   = ["s3:PutObject"]
+    resources = ["*"]
+  }
+}
+
+resource "aws_iam_policy" "s3_put_policy" {
+  name        = "s3_put_policy"
+  description = "Policy for allowing PutObject action"
+  policy      = data.aws_iam_policy_document.s3_put_object_policy_document.json
+}
+
+# ECR-ECS IAM Role
+resource "aws_iam_role" "ecs_task_execution_role" {
+  name               = "ecs-task-execution-role"
+  assume_role_policy = <<EOF
+    {
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+        "Effect": "Allow",
+        "Principal": {
+            "Service": "ecs-tasks.amazonaws.com"
+        },
+        "Action": "sts:AssumeRole"
+        }
+    ]
+    }
+    EOF
+}
+
+# ECR-ECS policy attachment 
+resource "aws_iam_role_policy_attachment" "ecs_task_execution_role_policy_attachment" {
+  role       = aws_iam_role.ecs_task_execution_role.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+}
+
+resource "aws_iam_role_policy_attachment" "s3_put_object_role_policy_attachment" {
+  role       = aws_iam_role.ecs_task_execution_role.name
+  policy_arn = aws_iam_policy.s3_put_policy.arn
+}
+
 # Frontend ECS Configuration
 module "carshub_frontend_ecs" {
   source                                   = "./modules/ecs"
@@ -528,8 +702,8 @@ module "carshub_frontend_ecs" {
   task_definition_requires_compatibilities = ["FARGATE"]
   task_definition_cpu                      = 1024
   task_definition_memory                   = 2048
-  task_definition_execution_role_arn       = ""
-  task_definition_task_role_arn            = ""
+  task_definition_execution_role_arn       = aws_iam_role.ecs_task_execution_role.arn
+  task_definition_task_role_arn            = aws_iam_role.ecs_task_execution_role.arn
   task_definition_network_mode             = "awsvpc"
   task_definition_cpu_architecture         = "X86_64"
   task_definition_operating_system_family  = "LINUX"
@@ -543,17 +717,23 @@ module "carshub_frontend_ecs" {
         "essential" : true,
         "portMappings" : [
           {
-            "containerPort" : 80,
-            "hostPort" : 80,
-            "name" : "carshub_frontend",
-            "appProtocol" : "http",
-            "protocol" : "tcp"
+            "containerPort" : 3000,
+            "hostPort" : 3000,
+            "name" : "carshub_frontend"
           }
         ],
+        "logConfiguration" : {
+          "logDriver" : "awslogs",
+          "options" : {
+            "awslogs-group" : "${module.carshub_frontend_ecs_log_group.name}",
+            "awslogs-region" : "us-east-1",
+            "awslogs-stream-prefix" : "ecs"
+          }
+        },
         environment = [
           {
             name  = "BASE_URL"
-            value = "${module.carshub_frontend_lb.lb_dns_name}"
+            value = "${module.carshub_backend_lb.lb_dns_name}"
           },
           {
             name  = "CDN_URL"
@@ -563,22 +743,24 @@ module "carshub_frontend_ecs" {
       }
   ])
 
-  service_name                 = "carshub_frontend_ecs_service"
-  service_cluster              = aws_ecs_cluster.carshub_cluster.id
-  service_launch_type          = "FARGATE"
-  service_scheduling_strategy  = "REPLICA"
-  service_desired_count        = 1
-  service_force_new_deployment = true
+  service_name                = "carshub_frontend_ecs_service"
+  service_cluster             = aws_ecs_cluster.carshub_cluster.id
+  service_launch_type         = "FARGATE"
+  service_scheduling_strategy = "REPLICA"
+  service_desired_count       = 1
 
   deployment_controller_type = "ECS"
   load_balancer_config = [{
     container_name   = "carshub_frontend"
-    container_port   = 80
+    container_port   = 3000
     target_group_arn = module.carshub_frontend_lb.target_groups[0].arn
   }]
 
-  security_groups  = [module.carshub_sg.id]
-  subnets          = module.carshub_public_subnets.subnets[*].id
+  security_groups = [module.carshub_ecs_frontend_sg.id]
+  subnets = [
+    module.carshub_public_subnets.subnets[0].id,
+    module.carshub_public_subnets.subnets[1].id
+  ]
   assign_public_ip = true
 }
 
@@ -589,8 +771,8 @@ module "carshub_backend_ecs" {
   task_definition_requires_compatibilities = ["FARGATE"]
   task_definition_cpu                      = 1024
   task_definition_memory                   = 2048
-  task_definition_execution_role_arn       = ""
-  task_definition_task_role_arn            = ""
+  task_definition_execution_role_arn       = aws_iam_role.ecs_task_execution_role.arn
+  task_definition_task_role_arn            = aws_iam_role.ecs_task_execution_role.arn
   task_definition_network_mode             = "awsvpc"
   task_definition_cpu_architecture         = "X86_64"
   task_definition_operating_system_family  = "LINUX"
@@ -606,11 +788,17 @@ module "carshub_backend_ecs" {
           {
             "containerPort" : 80,
             "hostPort" : 80,
-            "name" : "carshub_backend",
-            "appProtocol" : "http",
-            "protocol" : "tcp"
+            "name" : "carshub_backend"
           }
         ],
+        "logConfiguration" : {
+          "logDriver" : "awslogs",
+          "options" : {
+            "awslogs-group" : "${module.carshub_backend_ecs_log_group.name}",
+            "awslogs-region" : "us-east-1",
+            "awslogs-stream-prefix" : "ecs"
+          }
+        },
         environment = [
           {
             name  = "DB_PATH"
@@ -628,12 +816,11 @@ module "carshub_backend_ecs" {
       }
   ])
 
-  service_name                 = "carshub_backend_ecs_service"
-  service_cluster              = aws_ecs_cluster.carshub_cluster.id
-  service_launch_type          = "FARGATE"
-  service_scheduling_strategy  = "REPLICA"
-  service_desired_count        = 1
-  service_force_new_deployment = true
+  service_name                = "carshub_backend_ecs_service"
+  service_cluster             = aws_ecs_cluster.carshub_cluster.id
+  service_launch_type         = "FARGATE"
+  service_scheduling_strategy = "REPLICA"
+  service_desired_count       = 1
 
   deployment_controller_type = "ECS"
   load_balancer_config = [{
@@ -642,7 +829,82 @@ module "carshub_backend_ecs" {
     target_group_arn = module.carshub_backend_lb.target_groups[0].arn
   }]
 
-  security_groups  = [module.carshub_sg.id]
-  subnets          = module.carshub_public_subnets.subnets[*].id
+  security_groups = [module.carshub_ecs_backend_sg.id]
+  subnets = [
+    module.carshub_public_subnets.subnets[0].id,
+    module.carshub_public_subnets.subnets[1].id
+  ]
   assign_public_ip = true
 }
+
+# CodeBuild Configuration
+# resource "aws_s3_bucket" "carshub_codebuild_cache_bucket" {
+#   bucket        = "theplayer007-carshub-codebuild-cache-bucket"
+#   force_destroy = true
+# }
+
+# data "aws_iam_policy_document" "codebuild_assume_role" {
+#   statement {
+#     effect = "Allow"
+
+#     principals {
+#       type        = "Service"
+#       identifiers = ["codebuild.amazonaws.com"]
+#     }
+
+#     actions = ["sts:AssumeRole"]
+#   }
+# }
+
+# resource "aws_iam_role" "carshub_codebuild_iam_role" {
+#   name               = "carshub-codebuild-iam-role"
+#   assume_role_policy = data.aws_iam_policy_document.codebuild_assume_role.json
+# }
+
+# data "aws_iam_policy_document" "codebuild_cache_bucket_policy_document" {
+#   statement {
+#     effect = "Allow"
+
+#     actions = [
+#       "logs:CreateLogGroup",
+#       "logs:CreateLogStream",
+#       "logs:PutLogEvents",
+#     ]
+
+#     resources = ["*"]
+#   }
+
+#   statement {
+#     effect    = "Allow"
+#     actions   = ["s3:*"]
+#     resources = ["*"]
+#   }
+
+#   statement {
+#     effect    = "Allow"
+#     actions   = ["ecr:GetAuthorizationToken"]
+#     resources = ["*"]
+#   }
+
+#   statement {
+#     effect = "Allow"
+#     actions = [
+#       "ecr:BatchGetImage",
+#       "ecr:BatchCheckLayerAvailability",
+#       "ecr:CompleteLayerUpload",
+#       "ecr:DescribeImages",
+#       "ecr:DescribeRepositories",
+#       "ecr:GetDownloadUrlForLayer",
+#       "ecr:InitiateLayerUpload",
+#       "ecr:ListImages",
+#       "ecr:PutImage",
+#       "ecr:UploadLayerPart"
+#     ]
+#     resources = [aws_ecr_repository.carshub.arn]
+#   }
+# }
+
+# resource "aws_iam_role_policy" "carshub_codebuild_cache_bucket_policy" {
+#   role   = aws_iam_role.carshub_codebuild_iam_role.name
+#   policy = data.aws_iam_policy_document.codebuild_cache_bucket_policy_document.json
+# }
