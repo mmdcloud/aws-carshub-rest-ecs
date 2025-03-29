@@ -191,8 +191,9 @@ module "carshub_public_rt" {
   subnets = module.carshub_public_subnets.subnets[*]
   routes = [
     {
-      cidr_block = "0.0.0.0/0"
-      gateway_id = module.carshub_vpc.igw_id
+      cidr_block     = "0.0.0.0/0"
+      gateway_id     = module.carshub_vpc.igw_id
+      nat_gateway_id = ""
     }
   ]
   vpc_id = module.carshub_vpc.vpc_id
@@ -203,18 +204,24 @@ module "carshub_private_rt" {
   source  = "./modules/vpc/route_tables"
   name    = "carshub public route table"
   subnets = module.carshub_private_subnets.subnets[*]
-  routes  = []
-  vpc_id  = module.carshub_vpc.vpc_id
+  routes = [
+    {
+      cidr_block     = "0.0.0.0/0"
+      nat_gateway_id = module.carshub_nat.id
+      gateway_id     = ""
+    }
+  ]
+  vpc_id = module.carshub_vpc.vpc_id
 }
 
 # Nat Gateway
-# module "carshub_nat" {
-#   source      = "./modules/vpc/nat"
-#   subnets     = module.carshub_public_subnets.subnets[*]
-#   eip_name    = "carshub_vpc_nat_eip"
-#   nat_gw_name = "carshub_vpc_nat"
-#   domain      = "vpc"
-# }
+module "carshub_nat" {
+  source      = "./modules/vpc/nat"
+  subnet      = module.carshub_public_subnets.subnets[0].id
+  eip_name    = "carshub_vpc_nat_eip"
+  nat_gw_name = "carshub_vpc_nat"
+  domain      = "vpc"
+}
 
 # Secrets Manager
 module "carshub_db_credentials" {
@@ -251,20 +258,22 @@ module "carshub_backend_container_registry" {
 
 # RDS Instance
 module "carshub_db" {
-  source               = "./modules/rds"
-  db_name              = "carshub"
-  allocated_storage    = 20
-  engine               = "mysql"
-  engine_version       = "8.0"
-  instance_class       = "db.t3.micro"
-  multi_az             = false
-  parameter_group_name = "default.mysql8.0"
-  username             = tostring(data.vault_generic_secret.rds.data["username"])
-  password             = tostring(data.vault_generic_secret.rds.data["password"])
-  subnet_group_name    = "carshub_rds_subnet_group"
+  source                  = "./modules/rds"
+  db_name                 = "carshub"
+  allocated_storage       = 20
+  engine                  = "mysql"
+  engine_version          = "8.0"
+  instance_class          = "db.t3.micro"
+  multi_az                = true
+  parameter_group_name    = "default.mysql8.0"
+  username                = tostring(data.vault_generic_secret.rds.data["username"])
+  password                = tostring(data.vault_generic_secret.rds.data["password"])
+  subnet_group_name       = "carshub_rds_subnet_group"
+  backup_retention_period = 7
+  backup_window           = "03:00-05:00"
   subnet_group_ids = [
-    module.carshub_public_subnets.subnets[0].id,
-    module.carshub_public_subnets.subnets[1].id
+    module.carshub_private_subnets.subnets[0].id,
+    module.carshub_private_subnets.subnets[1].id
   ]
   vpc_security_group_ids = [module.carshub_rds_sg.id]
   publicly_accessible    = false
@@ -505,7 +514,6 @@ module "carshub_media_update_function" {
   s3_bucket = module.carshub_media_update_function_code.bucket
   s3_key    = "lambda.zip"
   layers    = [aws_lambda_layer_version.python_layer.arn]
-  # code_signing_config_arn = module.carshub_signing_profile.config_arn
 }
 
 # Cloudfront distribution
@@ -758,8 +766,8 @@ module "carshub_frontend_ecs" {
 
   security_groups = [module.carshub_ecs_frontend_sg.id]
   subnets = [
-    module.carshub_public_subnets.subnets[0].id,
-    module.carshub_public_subnets.subnets[1].id
+    module.carshub_private_subnets.subnets[0].id,
+    module.carshub_private_subnets.subnets[1].id
   ]
   assign_public_ip = true
 }
@@ -831,8 +839,8 @@ module "carshub_backend_ecs" {
 
   security_groups = [module.carshub_ecs_backend_sg.id]
   subnets = [
-    module.carshub_public_subnets.subnets[0].id,
-    module.carshub_public_subnets.subnets[1].id
+    module.carshub_private_subnets.subnets[0].id,
+    module.carshub_private_subnets.subnets[1].id
   ]
   assign_public_ip = true
 }
