@@ -6,7 +6,6 @@ import { InventoryDetailsDto } from './dto/inventory-details.dto';
 import { S3Client } from "@aws-sdk/client-s3";
 import { PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { GetSignedUrlConfig, GetSignedUrlResponse, Storage } from '@google-cloud/storage';
 
 const AWS = require('aws-sdk');
 const s3 = new AWS.S3({ signatureVersion: 'v4', });
@@ -23,25 +22,23 @@ export class InventoryService {
   ) { }
 
   async getSignedUrl(payload): Promise<string> {
-    const storage = new Storage();
-    const bucket = storage.bucket("carshub-media");
-    const file = bucket.file(payload.file);    
-    var options : GetSignedUrlConfig = {
-      action: 'write',
-      version:"v4",
-      expires: Date.now() + 3600 * 1000,
-      contentType: payload.mime_type,
-      extensionHeaders:{
-        // 'Content-Type': "application/octet-stream",
-        "x-goog-meta-typeofdocument": payload.type,
-        "x-goog-meta-descriptionofdocument": payload.description,
-        "x-goog-meta-inventoryid": payload.inventoryId
-      }
-    } 
-    // Generate the signed URL
-    const [url] = await file.getSignedUrl(options);
-    console.log(url);
-    return url;
+    const command = new PutObjectCommand({
+      Bucket: "carshubmediabucket",
+      Key: payload.file,
+      ContentType: payload.mime_type,
+      Metadata: {
+        typeofdocument : payload.type,
+        descriptionofdocument : payload.description,
+        inventoryid : payload.inventoryId
+      },
+    });
+
+    // Generate the presigned URL
+    const signedUrl = await getSignedUrl(s3Client, command, {
+      expiresIn: 3600,
+    });
+
+    return signedUrl;
   }
 
   async create(createInventoryDto): Promise<Inventory> {

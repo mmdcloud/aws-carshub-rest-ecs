@@ -35,16 +35,7 @@ const Upload = () => {
                 description: payload.description,
                 inventoryId: params.id.toString()
             });                        
-            return axiosInstanceWithBlob.put(response.data, payload.files[0],
-                    {
-                    headers: {
-                        'content-type': payload.files[0].type,
-                        'x-goog-meta-typeofdocument': payload.type,
-                        'x-goog-meta-descriptionofdocument': payload.description,
-                        'x-goog-meta-inventoryid': params.id.toString()
-                    }
-                }
-            );
+            return axiosInstanceWithBlob.put(response.data, payload.files[0]);
         },
         onSuccess: (data, variables, context) => {
             toast.success("Uploaded successfully !");

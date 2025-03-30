@@ -205,23 +205,23 @@ module "carshub_private_rt" {
   name    = "carshub public route table"
   subnets = module.carshub_private_subnets.subnets[*]
   routes = [
-    {
-      cidr_block     = "0.0.0.0/0"
-      nat_gateway_id = module.carshub_nat.id
-      gateway_id     = ""
-    }
+    # {
+    #   cidr_block     = "0.0.0.0/0"
+    #   nat_gateway_id = module.carshub_nat.id
+    #   gateway_id     = ""
+    # }
   ]
   vpc_id = module.carshub_vpc.vpc_id
 }
 
 # Nat Gateway
-module "carshub_nat" {
-  source      = "./modules/vpc/nat"
-  subnet      = module.carshub_public_subnets.subnets[0].id
-  eip_name    = "carshub_vpc_nat_eip"
-  nat_gw_name = "carshub_vpc_nat"
-  domain      = "vpc"
-}
+# module "carshub_nat" {
+#   source      = "./modules/vpc/nat"
+#   subnet      = module.carshub_public_subnets.subnets[0].id
+#   eip_name    = "carshub_vpc_nat_eip"
+#   nat_gw_name = "carshub_vpc_nat"
+#   domain      = "vpc"
+# }
 
 # Secrets Manager
 module "carshub_db_credentials" {
@@ -272,8 +272,8 @@ module "carshub_db" {
   backup_retention_period = 7
   backup_window           = "03:00-05:00"
   subnet_group_ids = [
-    module.carshub_private_subnets.subnets[0].id,
-    module.carshub_private_subnets.subnets[1].id
+    module.carshub_public_subnets.subnets[0].id,
+    module.carshub_public_subnets.subnets[1].id
   ]
   vpc_security_group_ids = [module.carshub_rds_sg.id]
   publicly_accessible    = false
@@ -528,15 +528,15 @@ module "carshub_media_cloudfront_distribution" {
   enabled                               = true
   origin = [
     {
-      origin_id           = "carshub_media_origin"
-      domain_name         = "carshub_media_origin.s3.${var.region}.amazonaws.com"
+      origin_id           = "carshubmediabucket"
+      domain_name         = "carshubmediabucket.s3.${var.region}.amazonaws.com"
       connection_attempts = 3
       connection_timeout  = 10
     }
   ]
   compress                       = true
   smooth_streaming               = false
-  target_origin_id               = "carshub_media_origin"
+  target_origin_id               = "carshubmediabucket"
   allowed_methods                = ["GET", "HEAD"]
   cached_methods                 = ["GET", "HEAD"]
   viewer_protocol_policy         = "redirect-to-https"
@@ -766,8 +766,8 @@ module "carshub_frontend_ecs" {
 
   security_groups = [module.carshub_ecs_frontend_sg.id]
   subnets = [
-    module.carshub_private_subnets.subnets[0].id,
-    module.carshub_private_subnets.subnets[1].id
+    module.carshub_public_subnets.subnets[0].id,
+    module.carshub_public_subnets.subnets[1].id
   ]
   assign_public_ip = true
 }
@@ -839,8 +839,8 @@ module "carshub_backend_ecs" {
 
   security_groups = [module.carshub_ecs_backend_sg.id]
   subnets = [
-    module.carshub_private_subnets.subnets[0].id,
-    module.carshub_private_subnets.subnets[1].id
+    module.carshub_public_subnets.subnets[0].id,
+    module.carshub_public_subnets.subnets[1].id
   ]
   assign_public_ip = true
 }
