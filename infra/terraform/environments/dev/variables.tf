@@ -3,6 +3,11 @@ variable "region" {
   default = "us-east-1"
 }
 
+variable "env" {
+  type    = string
+  default = "dev"
+}
+
 variable "db_name" {
   type    = string
   default = "carshub"

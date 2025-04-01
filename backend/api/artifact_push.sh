@@ -1,6 +1,6 @@
 #!/bin/bash
 mkdir backend-code
-cp -r ../../backend/api/* backend-code/
+cp -r ../../../../backend/api/* backend-code/
 cd backend-code
 
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)

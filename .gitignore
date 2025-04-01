@@ -1,6 +1,6 @@
-infra/terraform/.terraform*
-infra/terraform/terraform.*
-infra/terraform/backend-code
-infra/terraform/frontend-code
-.gitignore
-infra/tf-backup
+environments/dev/terraform.*
+environments/dev/.terraform*
+environments/prod/terraform.*
+environments/prod/.terraform*
+environments/staging/terraform.*
+environments/staging/.terraform*
