@@ -4,6 +4,7 @@ variable "lb_ip_address_type" {}
 variable "load_balancer_type" {}
 variable "security_groups" {}
 variable "subnets" {}
+variable "drop_invalid_header_fields" {}
 variable "enable_deletion_protection" {}
 
 variable "target_groups" {

@@ -241,7 +241,7 @@ module "carshub_frontend_container_registry" {
   source               = "../../modules/ecr"
   force_delete         = true
   scan_on_push         = false
-  image_tag_mutability = "MUTABLE"
+  image_tag_mutability = "IMMUTABLE"
   bash_command         = "bash ${path.cwd}/../../../../frontend/artifact_push.sh carshub_frontend_${var.env} ${var.region} http://${module.carshub_backend_lb.lb_dns_name} ${module.carshub_media_cloudfront_distribution.domain_name}"
   name                 = "carshub_frontend_${var.env}"
 }
@@ -251,7 +251,7 @@ module "carshub_backend_container_registry" {
   source               = "../../modules/ecr"
   force_delete         = true
   scan_on_push         = false
-  image_tag_mutability = "MUTABLE"
+  image_tag_mutability = "IMMUTABLE"
   bash_command         = "bash ${path.cwd}/../../../../backend/api/artifact_push.sh carshub_backend_${var.env} ${var.region}"
   name                 = "carshub_backend_${var.env}"
 }
@@ -557,6 +557,7 @@ module "carshub_frontend_lb" {
   lb_is_internal             = false
   lb_ip_address_type         = "ipv4"
   load_balancer_type         = "application"
+  drop_invalid_header_fields = true
   enable_deletion_protection = false
   security_groups            = [module.carshub_frontend_lb_sg.id]
   subnets                    = module.carshub_public_subnets.subnets[*].id
@@ -602,6 +603,7 @@ module "carshub_backend_lb" {
   lb_ip_address_type         = "ipv4"
   load_balancer_type         = "application"
   enable_deletion_protection = false
+  drop_invalid_header_fields = true
   security_groups            = [module.carshub_backend_lb_sg.id]
   subnets                    = module.carshub_public_subnets.subnets[*].id
   target_groups = [
@@ -648,13 +650,13 @@ resource "aws_ecs_cluster" "carshub_cluster" {
 
 # Cloudwatch log groups for ecs service logs
 module "carshub_frontend_ecs_log_group" {
-  source            = "../../modules/cloudwatch"
+  source            = "../../modules/cloudwatch/cloudwatch-log-stream"
   log_group_name    = "/ecs/carshub_frontend_${var.env}"
   retention_in_days = 30
 }
 
 module "carshub_backend_ecs_log_group" {
-  source            = "../../modules/cloudwatch"
+  source            = "../../modules/cloudwatch/cloudwatch-log-stream"
   log_group_name    = "/ecs/carshub_backend_${var.env}"
   retention_in_days = 30
 }

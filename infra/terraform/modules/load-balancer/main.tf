@@ -5,6 +5,7 @@ resource "aws_lb" "lb" {
   ip_address_type            = var.lb_ip_address_type
   load_balancer_type         = var.load_balancer_type
   security_groups            = var.security_groups
+  drop_invalid_header_fields = var.drop_invalid_header_fields
   subnets                    = var.subnets
   enable_deletion_protection = var.enable_deletion_protection
   

@@ -4,3 +4,4 @@ environments/prod/terraform.*
 environments/prod/.terraform*
 environments/staging/terraform.*
 environments/staging/.terraform*
+.gitignore

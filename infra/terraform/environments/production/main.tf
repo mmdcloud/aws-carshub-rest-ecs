@@ -205,23 +205,23 @@ module "carshub_private_rt" {
   name    = "carshub public route table_${var.env}"
   subnets = module.carshub_private_subnets.subnets[*]
   routes = [
-    # {
-    #   cidr_block     = "0.0.0.0/0"
-    #   nat_gateway_id = module.carshub_nat.id
-    #   gateway_id     = ""
-    # }
+    {
+      cidr_block     = "0.0.0.0/0"
+      nat_gateway_id = module.carshub_nat.id
+      gateway_id     = ""
+    }
   ]
   vpc_id = module.carshub_vpc.vpc_id
 }
 
 # Nat Gateway
-# module "carshub_nat" {
-#   source      = "../../modules/vpc/nat"
-#   subnet      = module.carshub_public_subnets.subnets[0].id
-#   eip_name    = "carshub_vpc_nat_eip"
-#   nat_gw_name = "carshub_vpc_nat"
-#   domain      = "vpc"
-# }
+module "carshub_nat" {
+  source      = "../../modules/vpc/nat"
+  subnet      = module.carshub_public_subnets.subnets[0].id
+  eip_name    = "carshub_vpc_nat_eip"
+  nat_gw_name = "carshub_vpc_nat"
+  domain      = "vpc"
+}
 
 # Secrets Manager
 module "carshub_db_credentials" {
@@ -241,7 +241,7 @@ module "carshub_frontend_container_registry" {
   source               = "../../modules/ecr"
   force_delete         = true
   scan_on_push         = false
-  image_tag_mutability = "MUTABLE"
+  image_tag_mutability = "IMMUTABLE"
   bash_command         = "bash ${path.cwd}/../../../../frontend/artifact_push.sh carshub_frontend_${var.env} ${var.region} http://${module.carshub_backend_lb.lb_dns_name} ${module.carshub_media_cloudfront_distribution.domain_name}"
   name                 = "carshub_frontend_${var.env}"
 }
@@ -251,7 +251,7 @@ module "carshub_backend_container_registry" {
   source               = "../../modules/ecr"
   force_delete         = true
   scan_on_push         = false
-  image_tag_mutability = "MUTABLE"
+  image_tag_mutability = "IMMUTABLE"
   bash_command         = "bash ${path.cwd}/../../../../backend/api/artifact_push.sh carshub_backend_${var.env} ${var.region}"
   name                 = "carshub_backend_${var.env}"
 }
@@ -272,8 +272,8 @@ module "carshub_db" {
   backup_retention_period = 7
   backup_window           = "03:00-05:00"
   subnet_group_ids = [
-    module.carshub_public_subnets.subnets[0].id,
-    module.carshub_public_subnets.subnets[1].id
+    module.carshub_private_subnets.subnets[0].id,
+    module.carshub_private_subnets.subnets[1].id
   ]
   vpc_security_group_ids = [module.carshub_rds_sg.id]
   publicly_accessible    = false
@@ -385,19 +385,19 @@ resource "aws_lambda_layer_version" "python_layer" {
   compatible_runtimes = ["python3.12"]
 }
 
-# # Signing profile
-# module "carshub_signing_profile" {
-#   source                           = "../../modules/signing-profile"
-#   platform_id                      = "AWSLambda-SHA384-ECDSA"
-#   signature_validity_value         = 5
-#   signature_validity_type          = "YEARS"
-#   ignore_signing_job_failure       = true
-#   untrusted_artifact_on_deployment = "Warn"
-#   s3_bucket_key                    = "lambda.zip"
-#   s3_bucket_source                 = module.carshub_media_update_function_code.bucket
-#   s3_bucket_version                = module.carshub_media_update_function_code.objects[0].version_id
-#   s3_bucket_destination            = module.carshub_media_update_function_code_signed.bucket
-# }
+# Signing profile
+module "carshub_signing_profile" {
+  source                           = "../../modules/signing-profile"
+  platform_id                      = "AWSLambda-SHA384-ECDSA"
+  signature_validity_value         = 5
+  signature_validity_type          = "YEARS"
+  ignore_signing_job_failure       = true
+  untrusted_artifact_on_deployment = "Warn"
+  s3_bucket_key                    = "lambda.zip"
+  s3_bucket_source                 = module.carshub_media_update_function_code.bucket
+  s3_bucket_version                = module.carshub_media_update_function_code.objects[0].version_id
+  s3_bucket_destination            = module.carshub_media_update_function_code_signed.bucket
+}
 
 # Lambda IAM  Role
 module "carshub_media_update_function_iam_role" {
@@ -557,6 +557,7 @@ module "carshub_frontend_lb" {
   lb_is_internal             = false
   lb_ip_address_type         = "ipv4"
   load_balancer_type         = "application"
+  drop_invalid_header_fields = true
   enable_deletion_protection = false
   security_groups            = [module.carshub_frontend_lb_sg.id]
   subnets                    = module.carshub_public_subnets.subnets[*].id
@@ -602,6 +603,7 @@ module "carshub_backend_lb" {
   lb_ip_address_type         = "ipv4"
   load_balancer_type         = "application"
   enable_deletion_protection = false
+  drop_invalid_header_fields = true
   security_groups            = [module.carshub_backend_lb_sg.id]
   subnets                    = module.carshub_public_subnets.subnets[*].id
   target_groups = [
@@ -648,13 +650,13 @@ resource "aws_ecs_cluster" "carshub_cluster" {
 
 # Cloudwatch log groups for ecs service logs
 module "carshub_frontend_ecs_log_group" {
-  source            = "../../modules/cloudwatch"
+  source            = "../../modules/cloudwatch/cloudwatch-log-stream"
   log_group_name    = "/ecs/carshub_frontend_${var.env}"
   retention_in_days = 30
 }
 
 module "carshub_backend_ecs_log_group" {
-  source            = "../../modules/cloudwatch"
+  source            = "../../modules/cloudwatch/cloudwatch-log-stream"
   log_group_name    = "/ecs/carshub_backend_${var.env}"
   retention_in_days = 30
 }
@@ -766,8 +768,8 @@ module "carshub_frontend_ecs" {
 
   security_groups = [module.carshub_ecs_frontend_sg.id]
   subnets = [
-    module.carshub_public_subnets.subnets[0].id,
-    module.carshub_public_subnets.subnets[1].id
+    module.carshub_private_subnets.subnets[0].id,
+    module.carshub_private_subnets.subnets[1].id
   ]
   assign_public_ip = true
 }
@@ -839,10 +841,66 @@ module "carshub_backend_ecs" {
 
   security_groups = [module.carshub_ecs_backend_sg.id]
   subnets = [
-    module.carshub_public_subnets.subnets[0].id,
-    module.carshub_public_subnets.subnets[1].id
+    module.carshub_private_subnets.subnets[0].id,
+    module.carshub_private_subnets.subnets[1].id
   ]
   assign_public_ip = true
+}
+
+# Module for App Autoscaling Policy
+module "carshub_frontend_app_autoscaling_policy" {
+  source                    = "../../modules/autoscaling"
+  min_capacity              = 2
+  max_capacity              = 10
+  target_resource_id        = "service/${aws_ecs_cluster.carshub_cluster.name}/${module.carshub_frontend_ecs.name}"
+  target_scalable_dimension = "ecs:service:DesiredCount"
+  target_service_namespace  = "ecs"
+  policies = [
+    {
+      name                    = ""
+      adjustment_type         = "ChangeInCapacity"
+      cooldown                = 60
+      metric_aggregation_type = "Average"
+      steps = [
+        {
+          metric_interval_lower_bound = 0
+          metric_interval_upper_bound = 20
+          scaling_adjustment          = 1
+        },
+        {
+          metric_interval_lower_bound = 20
+          scaling_adjustment          = 2
+        }
+      ]
+    }
+  ]
+}
+
+module "carshub_backend_app_autoscaling_policy" {
+  source                    = "../../modules/autoscaling"
+  min_capacity              = 2
+  max_capacity              = 10
+  target_resource_id        = "service/${aws_ecs_cluster.carshub_cluster.name}/${module.carshub_backend_ecs.name}"
+  target_scalable_dimension = "ecs:service:DesiredCount"
+  target_service_namespace  = "ecs"
+  policies = [
+    {
+      adjustment_type         = "ChangeInCapacity"
+      cooldown                = 60
+      metric_aggregation_type = "Average"
+      steps = [
+        {
+          metric_interval_lower_bound = 0
+          metric_interval_upper_bound = 20
+          scaling_adjustment          = 1
+        },
+        {
+          metric_interval_lower_bound = 20
+          scaling_adjustment          = 2
+        }
+      ]
+    }
+  ]
 }
 
 # CodeBuild Configuration
@@ -916,3 +974,313 @@ module "carshub_backend_ecs" {
 #   role   = aws_iam_role.carshub_codebuild_iam_role.name
 #   policy = data.aws_iam_policy_document.codebuild_cache_bucket_policy_document.json
 # }
+
+# MediaConvert SNS Configuration
+module "carshub_alarm_notifications" {
+  source     = "../../modules/sns"
+  topic_name = "carshub_cloudwatch_alarm_notification_topic"
+  subscriptions = [
+    {
+      protocol = "email"
+      endpoint = "madmaxcloudonline@gmail.com"
+    }
+  ]
+}
+
+# CPU Utilization Alarm
+module "carshub_frontend_ecs_service_high_cpu" {
+  source              = "../../modules/cloudwatch/cloudwatch-alarm"
+  alarm_name          = "${aws_ecs_cluster.carshub_cluster.name}-${module.carshub_frontend_ecs.name}-high-cpu-utilization"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = "2"
+  metric_name         = "CPUUtilization"
+  namespace           = "AWS/ECS"
+  period              = "60"
+  statistic           = "Average"
+  threshold           = "80"
+  alarm_description   = "This metric monitors ECS service CPU utilization"
+  alarm_actions       = [module.carshub_alarm_notifications.topic_arn]
+  ok_actions          = [module.carshub_alarm_notifications.topic_arn]
+
+  dimensions = {
+    ClusterName = aws_ecs_cluster.carshub_cluster.name
+    ServiceName = module.carshub_frontend_ecs.name
+  }
+
+}
+
+# Memory Utilization Alarm
+module "carshub_frontend_ecs_service_high_memory" {
+  source              = "../../modules/cloudwatch/cloudwatch-alarm"
+  alarm_name          = "${aws_ecs_cluster.carshub_cluster.name}-${module.carshub_frontend_ecs.name}-high-memory-utilization"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = "2"
+  metric_name         = "MemoryUtilization"
+  namespace           = "AWS/ECS"
+  period              = "60"
+  statistic           = "Average"
+  threshold           = "80"
+  alarm_description   = "This metric monitors ECS service memory utilization"
+  alarm_actions       = [module.carshub_alarm_notifications.topic_arn]
+  ok_actions          = [module.carshub_alarm_notifications.topic_arn]
+
+  dimensions = {
+    ClusterName = aws_ecs_cluster.carshub_cluster.name
+    ServiceName = module.carshub_frontend_ecs.name
+  }
+}
+
+# Service Running Tasks Alarm - alerts if there are fewer than expected tasks
+module "carshub_frontend_ecs_service_running_tasks" {
+  source              = "../../modules/cloudwatch/cloudwatch-alarm"
+  alarm_name          = "${aws_ecs_cluster.carshub_cluster.name}-${module.carshub_frontend_ecs.name}-low-running-tasks"
+  comparison_operator = "LessThanThreshold"
+  evaluation_periods  = "1"
+  metric_name         = "RunningTaskCount"
+  namespace           = "AWS/ECS"
+  period              = "60"
+  statistic           = "Minimum"
+  threshold           = "1" # Adjust based on your desired minimum task count
+  alarm_description   = "This metric monitors the minimum number of running tasks"
+  alarm_actions       = [module.carshub_alarm_notifications.topic_arn]
+  ok_actions          = [module.carshub_alarm_notifications.topic_arn]
+
+  dimensions = {
+    ClusterName = aws_ecs_cluster.carshub_cluster.name
+    ServiceName = module.carshub_frontend_ecs.name
+  }
+}
+
+# Service Failed Deployment Alarm
+module "carshub_frontend_ecs_failed_deployments" {
+  source              = "../../modules/cloudwatch/cloudwatch-alarm"
+  alarm_name          = "${aws_ecs_cluster.carshub_cluster.name}-${module.carshub_frontend_ecs.name}-failed-deployments"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = "1"
+  metric_name         = "DeploymentFailures"
+  namespace           = "ECS/ContainerInsights"
+  period              = "60"
+  statistic           = "Sum"
+  threshold           = "0"
+  alarm_description   = "This metric monitors ECS deployment failures"
+  alarm_actions       = [module.carshub_alarm_notifications.topic_arn]
+  ok_actions          = [module.carshub_alarm_notifications.topic_arn]
+
+  dimensions = {
+    ClusterName = aws_ecs_cluster.carshub_cluster.name
+    ServiceName = module.carshub_frontend_ecs.name
+  }
+}
+
+# Target Response Time Alarm (if using ALB)
+module "carshub_frontend_ecs_alb_high_response_time" {
+  source              = "../../modules/cloudwatch/cloudwatch-alarm"
+  alarm_name          = "${aws_ecs_cluster.carshub_cluster.name}-${module.carshub_frontend_ecs.name}-high-response-time"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = "3"
+  metric_name         = "TargetResponseTime"
+  namespace           = "AWS/ApplicationELB"
+  period              = "60"
+  extended_statistic  = "p95"
+  threshold           = "1" # 1 second response time
+  alarm_description   = "This metric monitors ALB target response time (p95)"
+  alarm_actions       = [module.carshub_alarm_notifications.topic_arn]
+  ok_actions          = [module.carshub_alarm_notifications.topic_arn]
+
+  dimensions = {
+    TargetGroup  = module.carshub_frontend_lb.target_groups[0].arn
+    LoadBalancer = "${module.carshub_frontend_lb.arn}"
+  }
+}
+
+# HTTP 5XX Error Rate Alarm (if using ALB)
+module "carshub_frontend_lb_high_5xx_errors" {
+  source              = "../../modules/cloudwatch/cloudwatch-alarm"
+  alarm_name          = "${aws_ecs_cluster.carshub_cluster.name}-${module.carshub_frontend_ecs.name}-high-5xx-errors"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = "1"
+  metric_name         = "HTTPCode_Target_5XX_Count"
+  namespace           = "AWS/ApplicationELB"
+  period              = "60"
+  statistic           = "Sum"
+  threshold           = "10" # Adjust based on your traffic pattern
+  alarm_description   = "This metric monitors number of 5XX errors"
+  alarm_actions       = [module.carshub_alarm_notifications.topic_arn]
+  ok_actions          = [module.carshub_alarm_notifications.topic_arn]
+
+  dimensions = {
+    TargetGroup  = module.carshub_frontend_lb.target_groups[0].arn
+    LoadBalancer = "${module.carshub_frontend_lb.arn}"
+  }
+}
+
+# ECS Task Restart Count - alerts on excessive task restarts which might indicate instability
+module "carshub_frontend_ecs_task_restarts" {
+  source              = "../../modules/cloudwatch/cloudwatch-alarm"
+  alarm_name          = "${aws_ecs_cluster.carshub_cluster.name}-${module.carshub_frontend_ecs.name}-high-task-restarts"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = "1"
+  metric_name         = "TaskRestartCount"
+  namespace           = "ECS/ContainerInsights"
+  period              = "300" # 5 minutes
+  statistic           = "Sum"
+  threshold           = "3" # Alert if more than 3 restarts in 5 minutes
+  alarm_description   = "This metric monitors excessive ECS task restarts"
+  alarm_actions       = [module.carshub_alarm_notifications.topic_arn]
+  ok_actions          = [module.carshub_alarm_notifications.topic_arn]
+
+  dimensions = {
+    ClusterName = aws_ecs_cluster.carshub_cluster.name
+    ServiceName = module.carshub_frontend_ecs.name
+  }
+}
+
+# -------------------------------------------------------------------------------------------------------------------------
+
+# CPU Utilization Alarm
+module "carshub_backend_ecs_service_high_cpu" {
+  source              = "../../modules/cloudwatch/cloudwatch-alarm"
+  alarm_name          = "${aws_ecs_cluster.carshub_cluster.name}-${module.carshub_backend_ecs.name}-high-cpu-utilization"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = "2"
+  metric_name         = "CPUUtilization"
+  namespace           = "AWS/ECS"
+  period              = "60"
+  statistic           = "Average"
+  threshold           = "80"
+  alarm_description   = "This metric monitors ECS service CPU utilization"
+  alarm_actions       = [module.carshub_alarm_notifications.topic_arn]
+  ok_actions          = [module.carshub_alarm_notifications.topic_arn]
+
+  dimensions = {
+    ClusterName = aws_ecs_cluster.carshub_cluster.name
+    ServiceName = module.carshub_backend_ecs.name
+  }
+
+}
+
+# Memory Utilization Alarm
+module "carshub_backend_ecs_service_high_memory" {
+  source              = "../../modules/cloudwatch/cloudwatch-alarm"
+  alarm_name          = "${aws_ecs_cluster.carshub_cluster.name}-${module.carshub_backend_ecs.name}-high-memory-utilization"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = "2"
+  metric_name         = "MemoryUtilization"
+  namespace           = "AWS/ECS"
+  period              = "60"
+  statistic           = "Average"
+  threshold           = "80"
+  alarm_description   = "This metric monitors ECS service memory utilization"
+  alarm_actions       = [module.carshub_alarm_notifications.topic_arn]
+  ok_actions          = [module.carshub_alarm_notifications.topic_arn]
+
+  dimensions = {
+    ClusterName = aws_ecs_cluster.carshub_cluster.name
+    ServiceName = module.carshub_backend_ecs.name
+  }
+}
+
+# Service Running Tasks Alarm - alerts if there are fewer than expected tasks
+module "carshub_backend_ecs_service_running_tasks" {
+  source              = "../../modules/cloudwatch/cloudwatch-alarm"
+  alarm_name          = "${aws_ecs_cluster.carshub_cluster.name}-${module.carshub_backend_ecs.name}-low-running-tasks"
+  comparison_operator = "LessThanThreshold"
+  evaluation_periods  = "1"
+  metric_name         = "RunningTaskCount"
+  namespace           = "AWS/ECS"
+  period              = "60"
+  statistic           = "Minimum"
+  threshold           = "1" # Adjust based on your desired minimum task count
+  alarm_description   = "This metric monitors the minimum number of running tasks"
+  alarm_actions       = [module.carshub_alarm_notifications.topic_arn]
+  ok_actions          = [module.carshub_alarm_notifications.topic_arn]
+
+  dimensions = {
+    ClusterName = aws_ecs_cluster.carshub_cluster.name
+    ServiceName = module.carshub_backend_ecs.name
+  }
+}
+
+# Service Failed Deployment Alarm
+module "carshub_backend_ecs_failed_deployments" {
+  source              = "../../modules/cloudwatch/cloudwatch-alarm"
+  alarm_name          = "${aws_ecs_cluster.carshub_cluster.name}-${module.carshub_backend_ecs.name}-failed-deployments"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = "1"
+  metric_name         = "DeploymentFailures"
+  namespace           = "ECS/ContainerInsights"
+  period              = "60"
+  statistic           = "Sum"
+  threshold           = "0"
+  alarm_description   = "This metric monitors ECS deployment failures"
+  alarm_actions       = [module.carshub_alarm_notifications.topic_arn]
+  ok_actions          = [module.carshub_alarm_notifications.topic_arn]
+
+  dimensions = {
+    ClusterName = aws_ecs_cluster.carshub_cluster.name
+    ServiceName = module.carshub_backend_ecs.name
+  }
+}
+
+# Target Response Time Alarm (if using ALB)
+module "carshub_backend_lb_high_response_time" {
+  source              = "../../modules/cloudwatch/cloudwatch-alarm"
+  alarm_name          = "${aws_ecs_cluster.carshub_cluster.name}-${module.carshub_backend_ecs.name}-high-response-time"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = "3"
+  metric_name         = "TargetResponseTime"
+  namespace           = "AWS/ApplicationELB"
+  period              = "60"
+  extended_statistic  = "p95"
+  threshold           = "1" # 1 second response time
+  alarm_description   = "This metric monitors ALB target response time (p95)"
+  alarm_actions       = [module.carshub_alarm_notifications.topic_arn]
+  ok_actions          = [module.carshub_alarm_notifications.topic_arn]
+
+  dimensions = {
+    TargetGroup  = module.carshub_backend_lb.target_groups[0].arn
+    LoadBalancer = "${module.carshub_backend_lb.arn}"
+  }
+}
+
+# HTTP 5XX Error Rate Alarm (if using ALB)
+module "carshub_backend_lb_high_5xx_errors" {
+  source              = "../../modules/cloudwatch/cloudwatch-alarm"
+  alarm_name          = "${aws_ecs_cluster.carshub_cluster.name}-${module.carshub_backend_ecs.name}-high-5xx-errors"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = "1"
+  metric_name         = "HTTPCode_Target_5XX_Count"
+  namespace           = "AWS/ApplicationELB"
+  period              = "60"
+  statistic           = "Sum"
+  threshold           = "10" # Adjust based on your traffic pattern
+  alarm_description   = "This metric monitors number of 5XX errors"
+  alarm_actions       = [module.carshub_alarm_notifications.topic_arn]
+  ok_actions          = [module.carshub_alarm_notifications.topic_arn]
+
+  dimensions = {
+    TargetGroup  = module.carshub_backend_lb.target_groups[0].arn
+    LoadBalancer = "${module.carshub_backend_lb.arn}"
+  }
+}
+
+# ECS Task Restart Count - alerts on excessive task restarts which might indicate instability
+module "carshub_backend_ecs_task_restarts" {
+  source              = "../../modules/cloudwatch/cloudwatch-alarm"
+  alarm_name          = "${aws_ecs_cluster.carshub_cluster.name}-${module.carshub_backend_ecs.name}-high-task-restarts"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = "1"
+  metric_name         = "TaskRestartCount"
+  namespace           = "ECS/ContainerInsights"
+  period              = "300" # 5 minutes
+  statistic           = "Sum"
+  threshold           = "3" # Alert if more than 3 restarts in 5 minutes
+  alarm_description   = "This metric monitors excessive ECS task restarts"
+  alarm_actions       = [module.carshub_alarm_notifications.topic_arn]
+  ok_actions          = [module.carshub_alarm_notifications.topic_arn]
+
+  dimensions = {
+    ClusterName = aws_ecs_cluster.carshub_cluster.name
+    ServiceName = module.carshub_backend_ecs.name
+  }
+}

@@ -10,7 +10,7 @@ terraform {
     }
   }
   backend "s3" {
-    bucket         = "carshubtfstate"
+    bucket         = "carshubtfstatemmd"
     key            = "dev/terraform.tfstate"
     region         = "us-east-1"
     dynamodb_table = "carshub-terraform-locks-dev"
@@ -20,6 +20,7 @@ terraform {
 # Configure the AWS Provider
 provider "aws" {
   region = "us-east-1"
+  allowed_account_ids = [ "585230455590" ]
 }
 
 provider "vault" {}

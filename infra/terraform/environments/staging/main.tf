@@ -241,7 +241,7 @@ module "carshub_frontend_container_registry" {
   source               = "../../modules/ecr"
   force_delete         = true
   scan_on_push         = false
-  image_tag_mutability = "MUTABLE"
+  image_tag_mutability = "IMMUTABLE"
   bash_command         = "bash ${path.cwd}/../../../../frontend/artifact_push.sh carshub_frontend_${var.env} ${var.region} http://${module.carshub_backend_lb.lb_dns_name} ${module.carshub_media_cloudfront_distribution.domain_name}"
   name                 = "carshub_frontend_${var.env}"
 }
@@ -251,7 +251,7 @@ module "carshub_backend_container_registry" {
   source               = "../../modules/ecr"
   force_delete         = true
   scan_on_push         = false
-  image_tag_mutability = "MUTABLE"
+  image_tag_mutability = "IMMUTABLE"
   bash_command         = "bash ${path.cwd}/../../../../backend/api/artifact_push.sh carshub_backend_${var.env} ${var.region}"
   name                 = "carshub_backend_${var.env}"
 }
@@ -557,6 +557,7 @@ module "carshub_frontend_lb" {
   lb_is_internal             = false
   lb_ip_address_type         = "ipv4"
   load_balancer_type         = "application"
+  drop_invalid_header_fields = true
   enable_deletion_protection = false
   security_groups            = [module.carshub_frontend_lb_sg.id]
   subnets                    = module.carshub_public_subnets.subnets[*].id
@@ -602,6 +603,7 @@ module "carshub_backend_lb" {
   lb_ip_address_type         = "ipv4"
   load_balancer_type         = "application"
   enable_deletion_protection = false
+  drop_invalid_header_fields = true
   security_groups            = [module.carshub_backend_lb_sg.id]
   subnets                    = module.carshub_public_subnets.subnets[*].id
   target_groups = [
@@ -648,13 +650,13 @@ resource "aws_ecs_cluster" "carshub_cluster" {
 
 # Cloudwatch log groups for ecs service logs
 module "carshub_frontend_ecs_log_group" {
-  source            = "../../modules/cloudwatch"
+  source            = "../../modules/cloudwatch/cloudwatch-log-stream"
   log_group_name    = "/ecs/carshub_frontend_${var.env}"
   retention_in_days = 30
 }
 
 module "carshub_backend_ecs_log_group" {
-  source            = "../../modules/cloudwatch"
+  source            = "../../modules/cloudwatch/cloudwatch-log-stream"
   log_group_name    = "/ecs/carshub_backend_${var.env}"
   retention_in_days = 30
 }
@@ -844,75 +846,3 @@ module "carshub_backend_ecs" {
   ]
   assign_public_ip = true
 }
-
-# CodeBuild Configuration
-# resource "aws_s3_bucket" "carshub_codebuild_cache_bucket" {
-#   bucket        = "theplayer007-carshub-codebuild-cache-bucket"
-#   force_destroy = true
-# }
-
-# data "aws_iam_policy_document" "codebuild_assume_role" {
-#   statement {
-#     effect = "Allow"
-
-#     principals {
-#       type        = "Service"
-#       identifiers = ["codebuild.amazonaws.com"]
-#     }
-
-#     actions = ["sts:AssumeRole"]
-#   }
-# }
-
-# resource "aws_iam_role" "carshub_codebuild_iam_role" {
-#   name               = "carshub-codebuild-iam-role"
-#   assume_role_policy = data.aws_iam_policy_document.codebuild_assume_role.json
-# }
-
-# data "aws_iam_policy_document" "codebuild_cache_bucket_policy_document" {
-#   statement {
-#     effect = "Allow"
-
-#     actions = [
-#       "logs:CreateLogGroup",
-#       "logs:CreateLogStream",
-#       "logs:PutLogEvents",
-#     ]
-
-#     resources = ["*"]
-#   }
-
-#   statement {
-#     effect    = "Allow"
-#     actions   = ["s3:*"]
-#     resources = ["*"]
-#   }
-
-#   statement {
-#     effect    = "Allow"
-#     actions   = ["ecr:GetAuthorizationToken"]
-#     resources = ["*"]
-#   }
-
-#   statement {
-#     effect = "Allow"
-#     actions = [
-#       "ecr:BatchGetImage",
-#       "ecr:BatchCheckLayerAvailability",
-#       "ecr:CompleteLayerUpload",
-#       "ecr:DescribeImages",
-#       "ecr:DescribeRepositories",
-#       "ecr:GetDownloadUrlForLayer",
-#       "ecr:InitiateLayerUpload",
-#       "ecr:ListImages",
-#       "ecr:PutImage",
-#       "ecr:UploadLayerPart"
-#     ]
-#     resources = [aws_ecr_repository.carshub.arn]
-#   }
-# }
-
-# resource "aws_iam_role_policy" "carshub_codebuild_cache_bucket_policy" {
-#   role   = aws_iam_role.carshub_codebuild_iam_role.name
-#   policy = data.aws_iam_policy_document.codebuild_cache_bucket_policy_document.json
-# }
