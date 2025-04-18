@@ -1,0 +1,13 @@
+version: 0.0
+os: linux
+files:
+  - source: /
+    destination: /home/ubuntu/nodeapp
+hooks:
+  BeforeInstall:
+    - location: scripts/before_script.sh
+      runas: root
+
+  AfterInstall:
+    - location: scripts/after_script.sh
+      runas: root

@@ -821,6 +821,10 @@ module "carshub_backend_ecs" {
           {
             name  = "CREDS"
             value = "${tostring(data.vault_generic_secret.rds.data["password"])}"
+          },
+          {
+            name  = "DB_NAME"
+            value = "${module.carshub_db.name}"
           }
         ]
       }

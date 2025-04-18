@@ -1,7 +1,10 @@
-environments/dev/terraform.*
-environments/dev/.terraform*
-environments/prod/terraform.*
-environments/prod/.terraform*
-environments/staging/terraform.*
-environments/staging/.terraform*
+infra/terraform/environments/dev/terraform.*
+infra/terraform/environments/dev/.terraform*
+infra/terraform/environments/dev/a.out
+infra/terraform/environments/production/terraform.*
+infra/terraform/environments/production/.terraform*
+infra/terraform/environments/production/a.out
+infra/terraform/environments/staging/terraform.*
+infra/terraform/environments/staging/.terraform*
+infra/terraform/environments/staging/a.out
 .gitignore
