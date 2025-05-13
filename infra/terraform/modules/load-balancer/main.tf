@@ -8,7 +8,6 @@ resource "aws_lb" "lb" {
   drop_invalid_header_fields = var.drop_invalid_header_fields
   subnets                    = var.subnets
   enable_deletion_protection = var.enable_deletion_protection
-  
   tags = {
     Name = var.lb_name
   }
@@ -23,7 +22,6 @@ resource "aws_lb_target_group" "lb_target_group" {
   protocol        = var.target_groups[count.index].target_protocol
   target_type     = var.target_groups[count.index].target_type
   vpc_id          = var.target_groups[count.index].target_vpc_id
-
   health_check {
     interval            = var.target_groups[count.index].health_check_interval
     path                = var.target_groups[count.index].health_check_path
@@ -34,7 +32,6 @@ resource "aws_lb_target_group" "lb_target_group" {
     unhealthy_threshold = var.target_groups[count.index].health_check_unhealthy_threshold
     port                = var.target_groups[count.index].health_check_port
   }
-
   tags = {
     Name = var.target_groups[count.index].target_group_name
   }
@@ -52,5 +49,8 @@ resource "aws_lb_listener" "lb_listener" {
       type             = default_action.value["type"]
       target_group_arn = default_action.value["target_group_arn"]
     }
+  }
+  tags = {
+    Name = var.listeners[count.index].listener_name
   }
 }

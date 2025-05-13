@@ -59,8 +59,8 @@ variable "privileged_mode" {
 
 variable "environment_variables" {
   description = "Name of the CodeBuild project"
-  type        = map(string)
-  default     = {}
+  type        = list(map(string))
+  default     = []
 }
 
 variable "fetch_submodules" {

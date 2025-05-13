@@ -34,14 +34,14 @@ resource "aws_s3_bucket_cors_configuration" "cors" {
       allowed_origins = cors_rule.value["allowed_origins"]
       max_age_seconds = cors_rule.value["max_age_seconds"]
     }
-  }
+  }  
 }
 
 # Bucket policy
 resource "aws_s3_bucket_policy" "bucket_policy" {
   count  = var.bucket_policy != "" ? 1 : 0
   bucket = aws_s3_bucket.bucket.id
-  policy = var.bucket_policy
+  policy = var.bucket_policy  
 }
 
 # Specifying bucket notification configuration
@@ -60,5 +60,5 @@ resource "aws_s3_bucket_notification" "bucket_notification" {
       lambda_function_arn = lambda_function.value["lambda_function_arn"]
       events              = lambda_function.value["events"]
     }
-  }
+  }  
 }

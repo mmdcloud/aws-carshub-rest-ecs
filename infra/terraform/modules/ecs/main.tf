@@ -14,7 +14,7 @@ resource "aws_ecs_task_definition" "carshub_task_definition" {
   container_definitions = var.task_definition_container_definitions
   tags_all = {
     Name = var.task_definition_family
-  }
+  }  
 }
 
 # ECS Service
@@ -40,5 +40,8 @@ resource "aws_ecs_service" "carshub-service" {
       container_port   = load_balancer.value["container_port"]
       target_group_arn = load_balancer.value["target_group_arn"]
     }
+  }
+  tags = {
+    Name = var.service_name
   }
 }

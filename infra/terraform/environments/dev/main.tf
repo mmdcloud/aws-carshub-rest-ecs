@@ -3,6 +3,8 @@ data "vault_generic_secret" "rds" {
   path = "secret/rds"
 }
 
+data "aws_caller_identity" "current" {}
+
 # VPC Configuration
 module "carshub_vpc" {
   source                = "../../modules/vpc/vpc"
@@ -569,7 +571,6 @@ module "carshub_frontend_lb" {
       target_protocol        = "HTTP"
       target_type            = "ip"
       target_vpc_id          = module.carshub_vpc.vpc_id
-
       health_check_interval            = 30
       health_check_path                = "/auth/signin"
       health_check_enabled             = true
@@ -614,7 +615,6 @@ module "carshub_backend_lb" {
       target_protocol        = "HTTP"
       target_type            = "ip"
       target_vpc_id          = module.carshub_vpc.vpc_id
-
       health_check_interval            = 30
       health_check_path                = "/"
       health_check_enabled             = true
@@ -646,17 +646,20 @@ resource "aws_ecs_cluster" "carshub_cluster" {
     name  = "containerInsights"
     value = "disabled"
   }
+  tags = {
+    Name = "carshub_cluster_${var.env}"
+  }
 }
 
 # Cloudwatch log groups for ecs service logs
 module "carshub_frontend_ecs_log_group" {
-  source            = "../../modules/cloudwatch/cloudwatch-log-stream"
+  source            = "../../modules/cloudwatch/cloudwatch-log-group"
   log_group_name    = "/ecs/carshub_frontend_${var.env}"
   retention_in_days = 30
 }
 
 module "carshub_backend_ecs_log_group" {
-  source            = "../../modules/cloudwatch/cloudwatch-log-stream"
+  source            = "../../modules/cloudwatch/cloudwatch-log-group"
   log_group_name    = "/ecs/carshub_backend_${var.env}"
   retention_in_days = 30
 }
@@ -758,7 +761,6 @@ module "carshub_frontend_ecs" {
   service_launch_type         = "FARGATE"
   service_scheduling_strategy = "REPLICA"
   service_desired_count       = 1
-
   deployment_controller_type = "ECS"
   load_balancer_config = [{
     container_name   = "carshub_frontend_${var.env}"
@@ -835,7 +837,6 @@ module "carshub_backend_ecs" {
   service_launch_type         = "FARGATE"
   service_scheduling_strategy = "REPLICA"
   service_desired_count       = 1
-
   deployment_controller_type = "ECS"
   load_balancer_config = [{
     container_name   = "carshub_backend_${var.env}"
@@ -908,7 +909,7 @@ data "aws_iam_policy_document" "codebuild_cache_bucket_policy_document" {
       "ecr:PutImage",
       "ecr:UploadLayerPart"
     ]
-    resources = [module.carshub_frontend_container_registry.arn,module.carshub_backend_container_registry.arn]
+    resources = [module.carshub_frontend_container_registry.arn, module.carshub_backend_container_registry.arn]
   }
 }
 
@@ -917,48 +918,74 @@ resource "aws_iam_role_policy" "carshub_codebuild_cache_bucket_policy" {
   policy = data.aws_iam_policy_document.codebuild_cache_bucket_policy_document.json
 }
 
-module "carshub_codebuild_frontend"{
-  source = "../../modules/devops/codebuild"
-  build_timeout = 60
-  cache_bucket_name = "carshubcodebuildfrontendcache${var.env}"
-  cloudwatch_group_name = "carshub-codebuiild-frontend-group-${var.env}"
-  cloudwatch_stream_name = "carshub-codebuiild-frontend-stream-${var.env}"
+module "carshub_codebuild_frontend" {
+  source                        = "../../modules/devops/codebuild"
+  build_timeout                 = 60
+  cache_bucket_name             = "carshubcodebuildfrontendcache${var.env}"
+  cloudwatch_group_name         = "carshub-codebuiild-frontend-group-${var.env}"
+  cloudwatch_stream_name        = "carshub-codebuiild-frontend-stream-${var.env}"
   codebuild_project_description = "carshub-codebuild-frontend-${var.env}"
-  codebuild_project_name = "carshub-codebuild-frontend-${var.env}"
-  role = aws_iam_role.carshub_codebuild_iam_role.arn  
-  compute_type = "BUILD_GENERAL1_SMALL"
-  env_image = "aws/codebuild/amazonlinux2-x86_64-standard:5.0"
-  env_type = "LINUX_CONTAINER"
-  fetch_submodules = true
-  force_destroy_cache_bucket = true
-  image_pull_credentials_type = "CODEBUILD"
-  privileged_mode = true
-  source_location = "https://github.com/mmdcloud/carshub-rest-ecs.git"  
-  source_git_clone_depth = "1"
-  source_type = "GITHUB"
-  source_version = "frontend"
-  environment_variables = []
+  codebuild_project_name        = "carshub-codebuild-frontend-${var.env}"
+  role                          = aws_iam_role.carshub_codebuild_iam_role.arn
+  compute_type                  = "BUILD_GENERAL1_SMALL"
+  env_image                     = "aws/codebuild/amazonlinux2-x86_64-standard:5.0"
+  env_type                      = "LINUX_CONTAINER"
+  fetch_submodules              = true
+  force_destroy_cache_bucket    = true
+  image_pull_credentials_type   = "CODEBUILD"
+  privileged_mode               = true
+  source_location               = "https://github.com/mmdcloud/carshub-rest-ecs.git"
+  source_git_clone_depth        = "1"
+  source_type                   = "GITHUB"
+  source_version                = "frontend"
+  environment_variables = [
+    {
+      name  = "ACCOUNT_ID"
+      value = data.aws_caller_identity.current.account_id
+    },
+    {
+      name  = "REGION"
+      value = "${var.region}"
+    },
+    {
+      name  = "REPO"
+      value = "carshub_frontend_${var.env}"
+    }
+  ]
 }
 
-module "carshub_codebuild_backend"{
-  source = "../../modules/devops/codebuild"
-  build_timeout = 60
-  cache_bucket_name = "carshubcodebuildbackendcache${var.env}"
-  cloudwatch_group_name = "carshub-codebuiild-backend-group-${var.env}"
-  cloudwatch_stream_name = "carshub-codebuiild-backend-stream-${var.env}"
+module "carshub_codebuild_backend" {
+  source                        = "../../modules/devops/codebuild"
+  build_timeout                 = 60
+  cache_bucket_name             = "carshubcodebuildbackendcache${var.env}"
+  cloudwatch_group_name         = "carshub-codebuiild-backend-group-${var.env}"
+  cloudwatch_stream_name        = "carshub-codebuiild-backend-stream-${var.env}"
   codebuild_project_description = "carshub-codebuild-backend-${var.env}"
-  codebuild_project_name = "carshub-codebuild-backend-${var.env}"
-  role = aws_iam_role.carshub_codebuild_iam_role.arn  
-  compute_type = "BUILD_GENERAL1_SMALL"
-  env_image = "aws/codebuild/amazonlinux2-x86_64-standard:5.0"
-  env_type = "LINUX_CONTAINER"
-  fetch_submodules = true
-  force_destroy_cache_bucket = true
-  image_pull_credentials_type = "CODEBUILD"
-  privileged_mode = true
-  source_location = "https://github.com/mmdcloud/carshub-rest-ecs.git"  
-  source_git_clone_depth = "1"
-  source_type = "GITHUB"
-  source_version = "backend"
-  environment_variables = []
+  codebuild_project_name        = "carshub-codebuild-backend-${var.env}"
+  role                          = aws_iam_role.carshub_codebuild_iam_role.arn
+  compute_type                  = "BUILD_GENERAL1_SMALL"
+  env_image                     = "aws/codebuild/amazonlinux2-x86_64-standard:5.0"
+  env_type                      = "LINUX_CONTAINER"
+  fetch_submodules              = true
+  force_destroy_cache_bucket    = true
+  image_pull_credentials_type   = "CODEBUILD"
+  privileged_mode               = true
+  source_location               = "https://github.com/mmdcloud/aws-carshub-rest-ecs.git"
+  source_git_clone_depth        = "1"
+  source_type                   = "GITHUB"
+  source_version                = "backend"
+  environment_variables = [
+    {
+      name  = "ACCOUNT_ID"
+      value = data.aws_caller_identity.current.account_id
+    },
+    {
+      name  = "REGION"
+      value = "${var.region}"
+    },
+    {
+      name  = "REPO"
+      value = "carshub_backend_${var.env}"
+    }
+  ]
 }

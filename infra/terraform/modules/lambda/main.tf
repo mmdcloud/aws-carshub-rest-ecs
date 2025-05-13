@@ -11,6 +11,9 @@ resource "aws_lambda_function" "function" {
   }
   layers                  = var.layers
   # code_signing_config_arn = var.code_signing_config_arn
+  tags = {
+    Name = var.function_name
+  }
 }
 
 # Granting permissions for lambda

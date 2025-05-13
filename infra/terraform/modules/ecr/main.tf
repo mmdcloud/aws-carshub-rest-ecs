@@ -6,6 +6,9 @@ resource "aws_ecr_repository" "repository" {
   image_scanning_configuration {
     scan_on_push = var.scan_on_push
   }
+  tags = {
+    Name = var.name
+  }
 }
 
 resource "null_resource" "push_image_to_ecr" {
