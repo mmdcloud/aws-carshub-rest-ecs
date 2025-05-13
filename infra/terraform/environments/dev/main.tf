@@ -851,74 +851,114 @@ module "carshub_backend_ecs" {
   assign_public_ip = true
 }
 
-# CodeBuild Configuration
-# resource "aws_s3_bucket" "carshub_codebuild_cache_bucket" {
-#   bucket        = "theplayer007-carshub-codebuild-cache-bucket"
-#   force_destroy = true
-# }
+data "aws_iam_policy_document" "codebuild_assume_role" {
+  statement {
+    effect = "Allow"
 
-# data "aws_iam_policy_document" "codebuild_assume_role" {
-#   statement {
-#     effect = "Allow"
+    principals {
+      type        = "Service"
+      identifiers = ["codebuild.amazonaws.com"]
+    }
 
-#     principals {
-#       type        = "Service"
-#       identifiers = ["codebuild.amazonaws.com"]
-#     }
+    actions = ["sts:AssumeRole"]
+  }
+}
 
-#     actions = ["sts:AssumeRole"]
-#   }
-# }
+resource "aws_iam_role" "carshub_codebuild_iam_role" {
+  name               = "carshub-codebuild-iam-role"
+  assume_role_policy = data.aws_iam_policy_document.codebuild_assume_role.json
+}
 
-# resource "aws_iam_role" "carshub_codebuild_iam_role" {
-#   name               = "carshub-codebuild-iam-role"
-#   assume_role_policy = data.aws_iam_policy_document.codebuild_assume_role.json
-# }
+data "aws_iam_policy_document" "codebuild_cache_bucket_policy_document" {
+  statement {
+    effect = "Allow"
 
-# data "aws_iam_policy_document" "codebuild_cache_bucket_policy_document" {
-#   statement {
-#     effect = "Allow"
+    actions = [
+      "logs:CreateLogGroup",
+      "logs:CreateLogStream",
+      "logs:PutLogEvents",
+    ]
 
-#     actions = [
-#       "logs:CreateLogGroup",
-#       "logs:CreateLogStream",
-#       "logs:PutLogEvents",
-#     ]
+    resources = ["*"]
+  }
 
-#     resources = ["*"]
-#   }
+  statement {
+    effect    = "Allow"
+    actions   = ["s3:*"]
+    resources = ["*"]
+  }
 
-#   statement {
-#     effect    = "Allow"
-#     actions   = ["s3:*"]
-#     resources = ["*"]
-#   }
+  statement {
+    effect    = "Allow"
+    actions   = ["ecr:GetAuthorizationToken"]
+    resources = ["*"]
+  }
 
-#   statement {
-#     effect    = "Allow"
-#     actions   = ["ecr:GetAuthorizationToken"]
-#     resources = ["*"]
-#   }
+  statement {
+    effect = "Allow"
+    actions = [
+      "ecr:BatchGetImage",
+      "ecr:BatchCheckLayerAvailability",
+      "ecr:CompleteLayerUpload",
+      "ecr:DescribeImages",
+      "ecr:DescribeRepositories",
+      "ecr:GetDownloadUrlForLayer",
+      "ecr:InitiateLayerUpload",
+      "ecr:ListImages",
+      "ecr:PutImage",
+      "ecr:UploadLayerPart"
+    ]
+    resources = [module.carshub_frontend_container_registry.arn,module.carshub_backend_container_registry.arn]
+  }
+}
 
-#   statement {
-#     effect = "Allow"
-#     actions = [
-#       "ecr:BatchGetImage",
-#       "ecr:BatchCheckLayerAvailability",
-#       "ecr:CompleteLayerUpload",
-#       "ecr:DescribeImages",
-#       "ecr:DescribeRepositories",
-#       "ecr:GetDownloadUrlForLayer",
-#       "ecr:InitiateLayerUpload",
-#       "ecr:ListImages",
-#       "ecr:PutImage",
-#       "ecr:UploadLayerPart"
-#     ]
-#     resources = [aws_ecr_repository.carshub.arn]
-#   }
-# }
+resource "aws_iam_role_policy" "carshub_codebuild_cache_bucket_policy" {
+  role   = aws_iam_role.carshub_codebuild_iam_role.name
+  policy = data.aws_iam_policy_document.codebuild_cache_bucket_policy_document.json
+}
 
-# resource "aws_iam_role_policy" "carshub_codebuild_cache_bucket_policy" {
-#   role   = aws_iam_role.carshub_codebuild_iam_role.name
-#   policy = data.aws_iam_policy_document.codebuild_cache_bucket_policy_document.json
-# }
+module "carshub_codebuild_frontend"{
+  source = "../../modules/devops/codebuild"
+  build_timeout = 60
+  cache_bucket_name = "carshubcodebuildfrontendcache${var.env}"
+  cloudwatch_group_name = "carshub-codebuiild-frontend-group-${var.env}"
+  cloudwatch_stream_name = "carshub-codebuiild-frontend-stream-${var.env}"
+  codebuild_project_description = "carshub-codebuild-frontend-${var.env}"
+  codebuild_project_name = "carshub-codebuild-frontend-${var.env}"
+  role = aws_iam_role.carshub_codebuild_iam_role.arn  
+  compute_type = "BUILD_GENERAL1_SMALL"
+  env_image = "aws/codebuild/amazonlinux2-x86_64-standard:5.0"
+  env_type = "LINUX_CONTAINER"
+  fetch_submodules = true
+  force_destroy_cache_bucket = true
+  image_pull_credentials_type = "CODEBUILD"
+  privileged_mode = true
+  source_location = "https://github.com/mmdcloud/carshub-rest-ecs.git"  
+  source_git_clone_depth = "1"
+  source_type = "GITHUB"
+  source_version = "frontend"
+  environment_variables = []
+}
+
+module "carshub_codebuild_backend"{
+  source = "../../modules/devops/codebuild"
+  build_timeout = 60
+  cache_bucket_name = "carshubcodebuildbackendcache${var.env}"
+  cloudwatch_group_name = "carshub-codebuiild-backend-group-${var.env}"
+  cloudwatch_stream_name = "carshub-codebuiild-backend-stream-${var.env}"
+  codebuild_project_description = "carshub-codebuild-backend-${var.env}"
+  codebuild_project_name = "carshub-codebuild-backend-${var.env}"
+  role = aws_iam_role.carshub_codebuild_iam_role.arn  
+  compute_type = "BUILD_GENERAL1_SMALL"
+  env_image = "aws/codebuild/amazonlinux2-x86_64-standard:5.0"
+  env_type = "LINUX_CONTAINER"
+  fetch_submodules = true
+  force_destroy_cache_bucket = true
+  image_pull_credentials_type = "CODEBUILD"
+  privileged_mode = true
+  source_location = "https://github.com/mmdcloud/carshub-rest-ecs.git"  
+  source_git_clone_depth = "1"
+  source_type = "GITHUB"
+  source_version = "backend"
+  environment_variables = []
+}

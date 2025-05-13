@@ -22,7 +22,7 @@ export const databaseProviders = [
                 // },
                 username: process.env.UN,
                 password: process.env.CREDS,                
-                database: 'carshub',
+                database: process.env.DB_NAME,
             });
             sequelize.addModels([
                 User, Brand, Buyer, VehicleModel, VehicleOwner, ExtraService,
