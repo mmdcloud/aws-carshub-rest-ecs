@@ -1164,9 +1164,9 @@ module "carshub_frontend_codepipeline" {
           input_artifacts  = ["build_output"]
           output_artifacts = []
           configuration = {
-            ClusterName    = aws_ecs_cluster.carshub_cluster.name
-            ServiceName    = module.carshub_frontend_ecs.name
-            FileName       = "imagedefinitions.json"
+            ClusterName = aws_ecs_cluster.carshub_cluster.name
+            ServiceName = module.carshub_frontend_ecs.name
+            FileName    = "imagedefinitions.json"
           }
         }
       ]
@@ -1238,9 +1238,9 @@ module "carshub_backend_codepipeline" {
           input_artifacts  = ["build_output"]
           output_artifacts = []
           configuration = {
-            ClusterName    = aws_ecs_cluster.carshub_cluster.name
-            ServiceName    = module.carshub_backend_ecs.name
-            FileName       = "imagedefinitions.json"
+            ClusterName = aws_ecs_cluster.carshub_cluster.name
+            ServiceName = module.carshub_backend_ecs.name
+            FileName    = "imagedefinitions.json"
           }
         }
       ]

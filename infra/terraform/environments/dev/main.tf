@@ -852,6 +852,7 @@ module "carshub_backend_ecs" {
   assign_public_ip = true
 }
 
+# CodeBuild IAM Role
 data "aws_iam_policy_document" "codebuild_assume_role" {
   statement {
     effect = "Allow"
