@@ -31,24 +31,21 @@ resource "aws_codebuild_project" "codebuild_project" {
     dynamic "environment_variable" {
       for_each = var.environment_variables
       content {
-        name  = each.key
-        value = each.value
+        name  = environment_variable.value.name
+        value = environment_variable.value.value
       }
     }
   }
-
   logs_config {
     cloudwatch_logs {
       group_name  = var.cloudwatch_group_name
       stream_name = var.cloudwatch_stream_name
     }
-
     s3_logs {
       status   = "ENABLED"
       location = "${aws_s3_bucket.codebuild_cache_bucket.id}/build-log"
     }
   }
-
   source {
     type            = var.source_type
     location        = var.source_location
@@ -58,9 +55,7 @@ resource "aws_codebuild_project" "codebuild_project" {
       fetch_submodules = var.fetch_submodules
     }
   }
-
   source_version = var.source_version
-
   tags = {
     Name = var.codebuild_project_name
   }

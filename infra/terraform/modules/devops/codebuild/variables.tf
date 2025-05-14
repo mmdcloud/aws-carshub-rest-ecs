@@ -58,8 +58,11 @@ variable "privileged_mode" {
 }
 
 variable "environment_variables" {
-  description = "Name of the CodeBuild project"
-  type        = list(map(string))
+  description = "Environment variables for the CodeBuild project"
+  type = list(object({
+    name   = string
+    value = string
+  }))  
   default     = []
 }
 

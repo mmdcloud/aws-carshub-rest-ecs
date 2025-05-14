@@ -49,8 +49,5 @@ resource "aws_lb_listener" "lb_listener" {
       type             = default_action.value["type"]
       target_group_arn = default_action.value["target_group_arn"]
     }
-  }
-  tags = {
-    Name = var.listeners[count.index].listener_name
-  }
+  }  
 }
