@@ -51,8 +51,8 @@ module "carshub_backend_lb_sg" {
       to_port         = 80
       protocol        = "tcp"
       self            = "false"
-      cidr_blocks     = ["0.0.0.0/0"]
-      security_groups = []
+      cidr_blocks     = []
+      security_groups = [module.carshub_frontend_lb_sg.id]
       description     = "any"
     }
   ]
@@ -262,10 +262,10 @@ module "carshub_backend_container_registry" {
 module "carshub_db" {
   source                  = "../../modules/rds"
   db_name                 = "carshub_${var.env}"
-  allocated_storage       = 20
+  allocated_storage       = 200
   engine                  = "mysql"
   engine_version          = "8.0"
-  instance_class          = "db.t3.micro"
+  instance_class          = "db.t4g.large"
   multi_az                = true
   parameter_group_name    = "default.mysql8.0"
   username                = tostring(data.vault_generic_secret.rds.data["username"])
@@ -275,11 +275,13 @@ module "carshub_db" {
   backup_window           = "03:00-05:00"
   subnet_group_ids = [
     module.carshub_private_subnets.subnets[0].id,
-    module.carshub_private_subnets.subnets[1].id
+    module.carshub_private_subnets.subnets[1].id,
+    module.carshub_private_subnets.subnets[2].id
   ]
   vpc_security_group_ids = [module.carshub_rds_sg.id]
   publicly_accessible    = false
-  skip_final_snapshot    = true
+  deletion_protection    = true
+  skip_final_snapshot    = false
 }
 
 # S3 buckets
@@ -299,8 +301,14 @@ module "carshub_media_bucket" {
   versioning_enabled = "Enabled"
   cors = [
     {
-      allowed_headers = ["*"]
-      allowed_methods = ["PUT", "POST", "GET"]
+      allowed_headers = ["${module.carshub_media_cloudfront_distribution.domain_name}"]
+      allowed_methods = ["GET"]
+      allowed_origins = ["*"]
+      max_age_seconds = 3000
+    },
+    {
+      allowed_headers = ["${module.carshub_frontend_lb.lb_dns_name}"]
+      allowed_methods = ["GET"]
       allowed_origins = ["*"]
       max_age_seconds = 3000
     }
@@ -325,7 +333,7 @@ module "carshub_media_bucket" {
       }
     ]
   })
-  force_destroy = true
+  force_destroy = false
   bucket_notification = {
     queue = [
       {
@@ -333,12 +341,7 @@ module "carshub_media_bucket" {
         events    = ["s3:ObjectCreated:*"]
       }
     ]
-    lambda_function = [
-      # {
-      #   lambda_function_arn = module.carshub_media_update_function.arn
-      #   events              = ["s3:ObjectCreated:*"]
-      # }
-    ]
+    lambda_function = []
   }
 }
 
@@ -355,25 +358,25 @@ module "carshub_media_update_function_code" {
   cors = [
     {
       allowed_headers = ["*"]
-      allowed_methods = ["PUT", "POST", "GET"]
+      allowed_methods = ["GET"]
       allowed_origins = ["*"]
       max_age_seconds = 3000
     }
   ]
   versioning_enabled = "Enabled"
-  force_destroy      = true
+  force_destroy      = false
 }
 
 module "carshub_media_update_function_code_signed" {
   source             = "../../modules/s3"
   bucket_name        = "carshubmediaupdatefunctioncodesigned${var.env}"
   versioning_enabled = "Enabled"
-  force_destroy      = true
+  force_destroy      = false
   bucket_policy      = ""
   cors = [
     {
       allowed_headers = ["*"]
-      allowed_methods = ["PUT", "POST", "GET"]
+      allowed_methods = ["GET"]
       allowed_origins = ["*"]
       max_age_seconds = 3000
     }
@@ -933,7 +936,7 @@ module "carshub_codebuild_frontend" {
   env_image                     = "aws/codebuild/amazonlinux2-x86_64-standard:5.0"
   env_type                      = "LINUX_CONTAINER"
   fetch_submodules              = true
-  force_destroy_cache_bucket    = true
+  force_destroy_cache_bucket    = false
   image_pull_credentials_type   = "CODEBUILD"
   privileged_mode               = true
   source_location               = "https://github.com/mmdcloud/aws-carshub-rest-ecs.git"
@@ -969,7 +972,7 @@ module "carshub_codebuild_backend" {
   env_image                     = "aws/codebuild/amazonlinux2-x86_64-standard:5.0"
   env_type                      = "LINUX_CONTAINER"
   fetch_submodules              = true
-  force_destroy_cache_bucket    = true
+  force_destroy_cache_bucket    = false
   image_pull_credentials_type   = "CODEBUILD"
   privileged_mode               = true
   source_location               = "https://github.com/mmdcloud/aws-carshub-rest-ecs.git"
@@ -996,7 +999,7 @@ module "carshub_codebuild_backend" {
 # CodePipeline frontend artifact bucket
 resource "aws_s3_bucket" "carshub_frontend_codepipeline_bucket" {
   bucket        = "carshub-frontend-codepipeline-bucket-${var.env}"
-  force_destroy = true
+  force_destroy = false
 }
 
 resource "aws_s3_bucket_public_access_block" "carshub_frontend_codepipeline_bucket_pab" {
@@ -1011,7 +1014,7 @@ resource "aws_s3_bucket_public_access_block" "carshub_frontend_codepipeline_buck
 # CodePipeline backend artifact bucket
 resource "aws_s3_bucket" "carshub_backend_codepipeline_bucket" {
   bucket        = "carshub-backend-codepipeline-bucket-${var.env}"
-  force_destroy = true
+  force_destroy = false
 }
 
 resource "aws_s3_bucket_public_access_block" "carshub_backend_codepipeline_bucket_pab" {
@@ -1251,132 +1254,61 @@ module "carshub_backend_codepipeline" {
 }
 
 # Module for App Autoscaling Policy
-# module "carshub_frontend_app_autoscaling_policy" {
-#   source                    = "../../modules/autoscaling"
-#   min_capacity              = 2
-#   max_capacity              = 10
-#   target_resource_id        = "service/${aws_ecs_cluster.carshub_cluster.name}/${module.carshub_frontend_ecs.name}"
-#   target_scalable_dimension = "ecs:service:DesiredCount"
-#   target_service_namespace  = "ecs"
-#   policies = [
-#     {
-#       name                    = ""
-#       adjustment_type         = "ChangeInCapacity"
-#       cooldown                = 60
-#       metric_aggregation_type = "Average"
-#       steps = [
-#         {
-#           metric_interval_lower_bound = 0
-#           metric_interval_upper_bound = 20
-#           scaling_adjustment          = 1
-#         },
-#         {
-#           metric_interval_lower_bound = 20
-#           scaling_adjustment          = 2
-#         }
-#       ]
-#     }
-#   ]
-# }
+module "carshub_frontend_app_autoscaling_policy" {
+  source                    = "../../modules/autoscaling"
+  min_capacity              = 2
+  max_capacity              = 10
+  target_resource_id        = "service/${aws_ecs_cluster.carshub_cluster.name}/${module.carshub_frontend_ecs.name}"
+  target_scalable_dimension = "ecs:service:DesiredCount"
+  target_service_namespace  = "ecs"
+  policies = [
+    {
+      name                    = "carshub_frontend_autoscaling_policy"
+      adjustment_type         = "ChangeInCapacity"
+      cooldown                = 60
+      metric_aggregation_type = "Average"
+      steps = [
+        {
+          metric_interval_lower_bound = 0
+          metric_interval_upper_bound = 20
+          scaling_adjustment          = 1
+        },
+        {
+          metric_interval_lower_bound = 20
+          scaling_adjustment          = 2
+        }
+      ]
+    }
+  ]
+}
 
-# module "carshub_backend_app_autoscaling_policy" {
-#   source                    = "../../modules/autoscaling"
-#   min_capacity              = 2
-#   max_capacity              = 10
-#   target_resource_id        = "service/${aws_ecs_cluster.carshub_cluster.name}/${module.carshub_backend_ecs.name}"
-#   target_scalable_dimension = "ecs:service:DesiredCount"
-#   target_service_namespace  = "ecs"
-#   policies = [
-#     {
-#       adjustment_type         = "ChangeInCapacity"
-#       cooldown                = 60
-#       metric_aggregation_type = "Average"
-#       steps = [
-#         {
-#           metric_interval_lower_bound = 0
-#           metric_interval_upper_bound = 20
-#           scaling_adjustment          = 1
-#         },
-#         {
-#           metric_interval_lower_bound = 20
-#           scaling_adjustment          = 2
-#         }
-#       ]
-#     }
-#   ]
-# }
-
-# CodeBuild Configuration
-# resource "aws_s3_bucket" "carshub_codebuild_cache_bucket" {
-#   bucket        = "theplayer007-carshub-codebuild-cache-bucket"
-#   force_destroy = true
-# }
-
-# data "aws_iam_policy_document" "codebuild_assume_role" {
-#   statement {
-#     effect = "Allow"
-
-#     principals {
-#       type        = "Service"
-#       identifiers = ["codebuild.amazonaws.com"]
-#     }
-
-#     actions = ["sts:AssumeRole"]
-#   }
-# }
-
-# resource "aws_iam_role" "carshub_codebuild_iam_role" {
-#   name               = "carshub-codebuild-iam-role"
-#   assume_role_policy = data.aws_iam_policy_document.codebuild_assume_role.json
-# }
-
-# data "aws_iam_policy_document" "codebuild_cache_bucket_policy_document" {
-#   statement {
-#     effect = "Allow"
-
-#     actions = [
-#       "logs:CreateLogGroup",
-#       "logs:CreateLogStream",
-#       "logs:PutLogEvents",
-#     ]
-
-#     resources = ["*"]
-#   }
-
-#   statement {
-#     effect    = "Allow"
-#     actions   = ["s3:*"]
-#     resources = ["*"]
-#   }
-
-#   statement {
-#     effect    = "Allow"
-#     actions   = ["ecr:GetAuthorizationToken"]
-#     resources = ["*"]
-#   }
-
-#   statement {
-#     effect = "Allow"
-#     actions = [
-#       "ecr:BatchGetImage",
-#       "ecr:BatchCheckLayerAvailability",
-#       "ecr:CompleteLayerUpload",
-#       "ecr:DescribeImages",
-#       "ecr:DescribeRepositories",
-#       "ecr:GetDownloadUrlForLayer",
-#       "ecr:InitiateLayerUpload",
-#       "ecr:ListImages",
-#       "ecr:PutImage",
-#       "ecr:UploadLayerPart"
-#     ]
-#     resources = [aws_ecr_repository.carshub.arn]
-#   }
-# }
-
-# resource "aws_iam_role_policy" "carshub_codebuild_cache_bucket_policy" {
-#   role   = aws_iam_role.carshub_codebuild_iam_role.name
-#   policy = data.aws_iam_policy_document.codebuild_cache_bucket_policy_document.json
-# }
+module "carshub_backend_app_autoscaling_policy" {
+  source                    = "../../modules/autoscaling"
+  min_capacity              = 2
+  max_capacity              = 10
+  target_resource_id        = "service/${aws_ecs_cluster.carshub_cluster.name}/${module.carshub_backend_ecs.name}"
+  target_scalable_dimension = "ecs:service:DesiredCount"
+  target_service_namespace  = "ecs"
+  policies = [
+    {
+      name                    = "carshub_backend_autoscaling_policy"
+      adjustment_type         = "ChangeInCapacity"
+      cooldown                = 60
+      metric_aggregation_type = "Average"
+      steps = [
+        {
+          metric_interval_lower_bound = 0
+          metric_interval_upper_bound = 20
+          scaling_adjustment          = 1
+        },
+        {
+          metric_interval_lower_bound = 20
+          scaling_adjustment          = 2
+        }
+      ]
+    }
+  ]
+}
 
 # CarsHub cloudwatch alarm notification configuration
 module "carshub_alarm_notifications" {

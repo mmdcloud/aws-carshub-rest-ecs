@@ -273,6 +273,7 @@ module "carshub_db" {
   subnet_group_name       = "carshub_rds_subnet_group"
   backup_retention_period = 7
   backup_window           = "03:00-05:00"
+  deletion_protection = true
   subnet_group_ids = [
     module.carshub_public_subnets.subnets[0].id,
     module.carshub_public_subnets.subnets[1].id

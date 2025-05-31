@@ -14,3 +14,4 @@ variable "subnet_group_ids" {}
 variable "vpc_security_group_ids" {}
 variable "backup_retention_period" {}
 variable "backup_window" {}
+variable "deletion_protection" {}

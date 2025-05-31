@@ -6,7 +6,6 @@ variable "security_groups" {}
 variable "subnets" {}
 variable "drop_invalid_header_fields" {}
 variable "enable_deletion_protection" {}
-
 variable "target_groups" {
   type = list(object({
     target_group_name                = string
@@ -26,7 +25,6 @@ variable "target_groups" {
 
   }))
 }
-
 variable "listeners" {
   type = list(object({
     listener_port     = string

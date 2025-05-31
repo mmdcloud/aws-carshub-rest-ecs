@@ -11,6 +11,7 @@ resource "aws_db_instance" "db" {
   parameter_group_name = var.parameter_group_name
   backup_retention_period = 7
   backup_window        = "03:00-05:00"
+  deletion_protection = var.deletion_protection
   skip_final_snapshot  = var.skip_final_snapshot
   db_subnet_group_name   = aws_db_subnet_group.rds_subnet_group.name
   vpc_security_group_ids = var.vpc_security_group_ids
