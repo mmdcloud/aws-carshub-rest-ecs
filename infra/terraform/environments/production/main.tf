@@ -271,8 +271,8 @@ module "carshub_db" {
   username                = tostring(data.vault_generic_secret.rds.data["username"])
   password                = tostring(data.vault_generic_secret.rds.data["password"])
   subnet_group_name       = "carshub_rds_subnet_group"
-  backup_retention_period = 7
-  backup_window           = "03:00-05:00"
+  backup_retention_period = 35
+  backup_window           = "03:00-06:00"
   subnet_group_ids = [
     module.carshub_private_subnets.subnets[0].id,
     module.carshub_private_subnets.subnets[1].id,
@@ -514,11 +514,11 @@ module "carshub_media_update_function" {
     DB_NAME     = var.db_name
     REGION      = var.region
   }
-  handler   = "lambda.lambda_handler"
-  runtime   = "python3.12"
-  s3_bucket = module.carshub_media_update_function_code.bucket
-  s3_key    = "lambda.zip"
-  layers    = [aws_lambda_layer_version.python_layer.arn]
+  handler                 = "lambda.lambda_handler"
+  runtime                 = "python3.12"
+  s3_bucket               = module.carshub_media_update_function_code.bucket
+  s3_key                  = "lambda.zip"
+  layers                  = [aws_lambda_layer_version.python_layer.arn]
   code_signing_config_arn = module.carshub_signing_profile.config_arn
 }
 
@@ -650,7 +650,7 @@ resource "aws_ecs_cluster" "carshub_cluster" {
   name = "carshub_cluster_${var.env}"
   setting {
     name  = "containerInsights"
-    value = "disabled"
+    value = "enabled"
   }
 }
 
@@ -1602,6 +1602,22 @@ module "carshub_frontend_codepipeline" {
       ]
     },
     {
+      name = "Approval"
+      actions = [{
+        name     = "ManualApproval"
+        category = "Approval"
+        owner    = "AWS"
+        provider = "Manual"
+        input_artifacts = []
+        output_artifacts = []
+        version  = "1"
+        configuration = {
+          NotificationArn = module.carshub_alarm_notifications.topic_arn
+          CustomData      = "Approve production deployment"
+        }
+      }]
+    },
+    {
       name = "Deploy"
       actions = [
         {
@@ -1674,6 +1690,22 @@ module "carshub_backend_codepipeline" {
           }
         }
       ]
+    },
+    {
+      name = "Approval"
+      actions = [{
+        name     = "ManualApproval"
+        category = "Approval"
+        owner    = "AWS"
+        provider = "Manual"
+        version  = "1"
+        input_artifacts = []
+        output_artifacts = []
+        configuration = {
+          NotificationArn = module.carshub_alarm_notifications.topic_arn
+          CustomData      = "Approve production deployment"
+        }
+      }]
     },
     {
       name = "Deploy"
