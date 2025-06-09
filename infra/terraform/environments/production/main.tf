@@ -262,7 +262,7 @@ module "carshub_backend_container_registry" {
 module "carshub_db" {
   source                  = "../../modules/rds"
   db_name                 = "carshub_${var.env}"
-  allocated_storage       = 200
+  allocated_storage       = 100
   engine                  = "mysql"
   engine_version          = "8.0"
   instance_class          = "db.t4g.large"
