@@ -8,7 +8,11 @@ resource "aws_db_instance" "db" {
   instance_class      = var.instance_class
   username             = var.username
   password             = var.password
-  parameter_group_name = var.parameter_group_name
+  max_allocated_storage = var.max_allocated_storage
+  performance_insights_enabled = var.performance_insights_enabled
+  performance_insights_retention_period = var.performance_insights_retention_period
+  monitoring_interval = var.monitoring_interval
+  parameter_group_name = aws_db_parameter_group.parameter_group.name
   backup_retention_period = 7
   backup_window        = "03:00-05:00"
   deletion_protection = var.deletion_protection
@@ -28,4 +32,17 @@ resource "aws_db_subnet_group" "rds_subnet_group" {
   tags = {
     Name = var.subnet_group_name
   }
+}
+
+resource "aws_db_parameter_group" "parameter_group" {
+  name   = var.parameter_group_name
+  family = var.parameter_group_family
+
+  dynamic "parameter" {
+    for_each = var.parameters
+    content {
+      name  = parameter.value.name
+      value = parameter.value.value
+    }    
+  }  
 }

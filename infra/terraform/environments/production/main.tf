@@ -219,7 +219,7 @@ module "carshub_private_rt" {
 # Nat Gateway
 module "carshub_nat" {
   source      = "../../modules/vpc/nat"
-  subnet      = module.carshub_public_subnets.subnets[0].id
+  subnets      = module.carshub_public_subnets.subnets[*].id
   eip_name    = "carshub_vpc_nat_eip"
   nat_gw_name = "carshub_vpc_nat"
   domain      = "vpc"
@@ -237,7 +237,28 @@ module "carshub_db_credentials" {
   })
 }
 
+
+# -----------------------------------------------------------------------------------------
+# VPC Flow Logs
+# -----------------------------------------------------------------------------------------
+
+resource "aws_cloudwatch_log_group" "carshub_flow_log_group" {
+  name              = "/carshub/application/${var.env}"
+  retention_in_days = 365
+}
+
+# Add VPC Flow Logs for security monitoring
+resource "aws_flow_log" "carshub_vpc_flow_log" {
+  # iam_role_arn    = aws_iam_role.vpc_flow_log_role.arn
+  log_destination = aws_cloudwatch_log_group.carshub_flow_log_group.arn
+  traffic_type    = "ALL"
+  vpc_id          = module.carshub_vpc.vpc_id
+}
+
+# -----------------------------------------------------------------------------------------
 # ECR Module
+# -----------------------------------------------------------------------------------------
+
 # 1. Frontend Repo
 module "carshub_frontend_container_registry" {
   source               = "../../modules/ecr"
@@ -258,16 +279,18 @@ module "carshub_backend_container_registry" {
   name                 = "carshub_backend_${var.env}"
 }
 
+# -----------------------------------------------------------------------------------------
 # RDS Instance
+# -----------------------------------------------------------------------------------------
+
 module "carshub_db" {
-  source                  = "../../modules/rds"
-  db_name                 = "carshub_${var.env}"
-  allocated_storage       = 100
-  engine                  = "mysql"
-  engine_version          = "8.0"
-  instance_class          = "db.t4g.large"
-  multi_az                = true
-  parameter_group_name    = "default.mysql8.0"
+  source            = "../../modules/rds"
+  db_name           = "carshub_${var.env}"
+  allocated_storage = 100
+  engine            = "mysql"
+  engine_version    = "8.0"
+  instance_class    = "db.t4g.large"
+  multi_az          = true
   username                = tostring(data.vault_generic_secret.rds.data["username"])
   password                = tostring(data.vault_generic_secret.rds.data["password"])
   subnet_group_name       = "carshub_rds_subnet_group"
@@ -278,11 +301,35 @@ module "carshub_db" {
     module.carshub_private_subnets.subnets[1].id,
     module.carshub_private_subnets.subnets[2].id
   ]
-  vpc_security_group_ids = [module.carshub_rds_sg.id]
-  publicly_accessible    = false
-  deletion_protection    = true
-  skip_final_snapshot    = false
+  vpc_security_group_ids                = [module.carshub_rds_sg.id]
+  publicly_accessible                   = false
+  deletion_protection                   = true
+  skip_final_snapshot                   = false
+  max_allocated_storage                 = 500
+  performance_insights_enabled          = true
+  performance_insights_retention_period = 7
+  monitoring_interval                   = 60
+  parameter_group_name                  = "carshub-db-pg-${var.env}"
+  parameter_group_family                = "mysql8.0"
+  parameters = [
+    {
+      name  = "max_connections"
+      value = "1000"
+    },
+    {
+      name  = "innodb_buffer_pool_size"
+      value = "{DBInstanceClassMemory*3/4}"
+    },
+    {
+      name  = "slow_query_log"
+      value = "1"
+    }
+  ]
 }
+
+# -----------------------------------------------------------------------------------------
+# S3 Configuration
+# -----------------------------------------------------------------------------------------
 
 # S3 buckets
 module "carshub_media_bucket" {
@@ -756,7 +803,19 @@ module "carshub_frontend_ecs" {
             value = "${module.carshub_media_cloudfront_distribution.domain_name}"
           }
         ]
-      }
+      },
+      {
+        "name" : "xray-daemon",
+        "image" : "amazon/aws-xray-daemon",
+        "cpu" : 32,
+        "memoryReservation" : 256,
+        "portMappings" : [
+          {
+            "containerPort" : 2000,
+            "protocol" : "udp"
+          }
+        ]
+      },
   ])
 
   service_name                = "carshub_frontend_ecs_service_${var.env}"
@@ -831,6 +890,18 @@ module "carshub_backend_ecs" {
           {
             name  = "DB_NAME"
             value = "${module.carshub_db.name}"
+          }
+        ]
+      },
+      {
+        "name" : "xray-daemon",
+        "image" : "amazon/aws-xray-daemon",
+        "cpu" : 32,
+        "memoryReservation" : 256,
+        "portMappings" : [
+          {
+            "containerPort" : 2000,
+            "protocol" : "udp"
           }
         ]
       }
@@ -1604,13 +1675,13 @@ module "carshub_frontend_codepipeline" {
     {
       name = "Approval"
       actions = [{
-        name     = "ManualApproval"
-        category = "Approval"
-        owner    = "AWS"
-        provider = "Manual"
-        input_artifacts = []
+        name             = "ManualApproval"
+        category         = "Approval"
+        owner            = "AWS"
+        provider         = "Manual"
+        input_artifacts  = []
         output_artifacts = []
-        version  = "1"
+        version          = "1"
         configuration = {
           NotificationArn = module.carshub_alarm_notifications.topic_arn
           CustomData      = "Approve production deployment"
@@ -1694,12 +1765,12 @@ module "carshub_backend_codepipeline" {
     {
       name = "Approval"
       actions = [{
-        name     = "ManualApproval"
-        category = "Approval"
-        owner    = "AWS"
-        provider = "Manual"
-        version  = "1"
-        input_artifacts = []
+        name             = "ManualApproval"
+        category         = "Approval"
+        owner            = "AWS"
+        provider         = "Manual"
+        version          = "1"
+        input_artifacts  = []
         output_artifacts = []
         configuration = {
           NotificationArn = module.carshub_alarm_notifications.topic_arn
