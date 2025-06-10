@@ -171,15 +171,15 @@ module "carshub_private_subnets" {
   subnets = [
     {
       subnet = "10.0.6.0/24"
-      az     = "us-east-1d"
+      az     = "us-east-1a"
     },
     {
       subnet = "10.0.5.0/24"
-      az     = "us-east-1e"
+      az     = "us-east-1b"
     },
     {
       subnet = "10.0.4.0/24"
-      az     = "us-east-1f"
+      az     = "us-east-1c"
     }
   ]
   vpc_id                  = module.carshub_vpc.vpc_id
@@ -204,7 +204,7 @@ module "carshub_public_rt" {
 # Carshub Private Route Table
 module "carshub_private_rt" {
   source  = "../../modules/vpc/route_tables"
-  name    = "carshub public route table_${var.env}"
+  name    = "carshub private route table_${var.env}"
   subnets = module.carshub_private_subnets.subnets[*]
   routes = [
     {
@@ -219,13 +219,16 @@ module "carshub_private_rt" {
 # Nat Gateway
 module "carshub_nat" {
   source      = "../../modules/vpc/nat"
-  subnets      = module.carshub_public_subnets.subnets[*].id
+  subnets     = module.carshub_public_subnets.subnets[*].id
   eip_name    = "carshub_vpc_nat_eip"
   nat_gw_name = "carshub_vpc_nat"
   domain      = "vpc"
 }
 
+# -----------------------------------------------------------------------------------------
 # Secrets Manager
+# -----------------------------------------------------------------------------------------
+
 module "carshub_db_credentials" {
   source                  = "../../modules/secrets-manager"
   name                    = "carshub_rds_secrets_${var.env}"
@@ -284,13 +287,13 @@ module "carshub_backend_container_registry" {
 # -----------------------------------------------------------------------------------------
 
 module "carshub_db" {
-  source            = "../../modules/rds"
-  db_name           = "carshub_${var.env}"
-  allocated_storage = 100
-  engine            = "mysql"
-  engine_version    = "8.0"
-  instance_class    = "db.t4g.large"
-  multi_az          = true
+  source                  = "../../modules/rds"
+  db_name                 = "carshub_${var.env}"
+  allocated_storage       = 100
+  engine                  = "mysql"
+  engine_version          = "8.0"
+  instance_class          = "db.t4g.large"
+  multi_az                = true
   username                = tostring(data.vault_generic_secret.rds.data["username"])
   password                = tostring(data.vault_generic_secret.rds.data["password"])
   subnet_group_name       = "carshub_rds_subnet_group"
@@ -331,7 +334,6 @@ module "carshub_db" {
 # S3 Configuration
 # -----------------------------------------------------------------------------------------
 
-# S3 buckets
 module "carshub_media_bucket" {
   source      = "../../modules/s3"
   bucket_name = "carshubmediabucket${var.env}"
@@ -414,6 +416,10 @@ module "carshub_media_update_function_code" {
   force_destroy      = false
 }
 
+# -----------------------------------------------------------------------------------------
+# Signing Profile
+# -----------------------------------------------------------------------------------------
+
 module "carshub_media_update_function_code_signed" {
   source             = "../../modules/s3"
   bucket_name        = "carshubmediaupdatefunctioncodesigned${var.env}"
@@ -430,13 +436,6 @@ module "carshub_media_update_function_code_signed" {
   ]
 }
 
-# Lambda Layer for storing dependencies
-resource "aws_lambda_layer_version" "python_layer" {
-  filename            = "../../files/python.zip"
-  layer_name          = "python"
-  compatible_runtimes = ["python3.12"]
-}
-
 # Signing profile
 module "carshub_signing_profile" {
   source                           = "../../modules/signing-profile"
@@ -450,6 +449,52 @@ module "carshub_signing_profile" {
   s3_bucket_version                = module.carshub_media_update_function_code.objects[0].version_id
   s3_bucket_destination            = module.carshub_media_update_function_code_signed.bucket
 }
+
+# -----------------------------------------------------------------------------------------
+# SQS Config
+# -----------------------------------------------------------------------------------------
+
+resource "aws_lambda_event_source_mapping" "sqs_event_trigger" {
+  event_source_arn                   = module.carshub_media_events_queue.arn
+  function_name                      = module.carshub_media_update_function.arn
+  enabled                            = true
+  batch_size                         = 10
+  maximum_batching_window_in_seconds = 60
+}
+
+# SQS Queue for buffering S3 events
+module "carshub_media_events_queue" {
+  source                        = "../../modules/sqs"
+  queue_name                    = "carshub-media-events-queue-${var.env}"
+  delay_seconds                 = 0
+  maxReceiveCount               = 3
+  dlq_message_retention_seconds = 86400
+  dlq_name                      = "carshub-media-events-dlq-${var.env}"
+  max_message_size              = 262144
+  message_retention_seconds     = 345600
+  visibility_timeout_seconds    = 180
+  receive_wait_time_seconds     = 20
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect    = "Allow"
+        Principal = { Service = "s3.amazonaws.com" }
+        Action    = "sqs:SendMessage"
+        Resource  = "arn:aws:sqs:us-east-1:*:carshub-media-events-queue-${var.env}"
+        Condition = {
+          ArnEquals = {
+            "aws:SourceArn" = module.carshub_media_bucket.arn
+          }
+        }
+      }
+    ]
+  })
+}
+
+# -----------------------------------------------------------------------------------------
+# Lambda Config
+# -----------------------------------------------------------------------------------------
 
 # Lambda IAM  Role
 module "carshub_media_update_function_iam_role" {
@@ -510,43 +555,11 @@ module "carshub_media_update_function_iam_role" {
     EOF
 }
 
-#  Lambda SQS event source mapping
-resource "aws_lambda_event_source_mapping" "sqs_event_trigger" {
-  event_source_arn                   = module.carshub_media_events_queue.arn
-  function_name                      = module.carshub_media_update_function.arn
-  enabled                            = true
-  batch_size                         = 10
-  maximum_batching_window_in_seconds = 60
-}
-
-# SQS Queue for buffering S3 events
-module "carshub_media_events_queue" {
-  source                        = "../../modules/sqs"
-  queue_name                    = "carshub-media-events-queue-${var.env}"
-  delay_seconds                 = 0
-  maxReceiveCount               = 3
-  dlq_message_retention_seconds = 86400
-  dlq_name                      = "carshub-media-events-dlq-${var.env}"
-  max_message_size              = 262144
-  message_retention_seconds     = 345600
-  visibility_timeout_seconds    = 180
-  receive_wait_time_seconds     = 20
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect    = "Allow"
-        Principal = { Service = "s3.amazonaws.com" }
-        Action    = "sqs:SendMessage"
-        Resource  = "arn:aws:sqs:us-east-1:*:carshub-media-events-queue-${var.env}"
-        Condition = {
-          ArnEquals = {
-            "aws:SourceArn" = module.carshub_media_bucket.arn
-          }
-        }
-      }
-    ]
-  })
+# Lambda Layer for storing dependencies
+resource "aws_lambda_layer_version" "python_layer" {
+  filename            = "../../files/python.zip"
+  layer_name          = "python"
+  compatible_runtimes = ["python3.12"]
 }
 
 # Lambda function to update media metadata in RDS database
@@ -569,7 +582,10 @@ module "carshub_media_update_function" {
   code_signing_config_arn = module.carshub_signing_profile.config_arn
 }
 
+# -----------------------------------------------------------------------------------------
 # Cloudfront distribution
+# -----------------------------------------------------------------------------------------
+
 module "carshub_media_cloudfront_distribution" {
   source                                = "../../modules/cloudfront"
   distribution_name                     = "carshub_media_cdn_${var.env}"
@@ -602,6 +618,10 @@ module "carshub_media_cloudfront_distribution" {
   geo_restriction_type           = "none"
   query_string                   = true
 }
+
+# -----------------------------------------------------------------------------------------
+# Load Balancer distribution
+# -----------------------------------------------------------------------------------------
 
 # Frontend Load Balancer
 module "carshub_frontend_lb" {
@@ -751,6 +771,12 @@ resource "aws_iam_role" "ecs_task_execution_role" {
 resource "aws_iam_role_policy_attachment" "ecs_task_execution_role_policy_attachment" {
   role       = aws_iam_role.ecs_task_execution_role.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+}
+
+# X-Ray tracing
+resource "aws_iam_role_policy_attachment" "ecs_task_xray" {
+  role       = aws_iam_role.ecs_task_execution_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess"
 }
 
 resource "aws_iam_role_policy_attachment" "s3_put_object_role_policy_attachment" {
