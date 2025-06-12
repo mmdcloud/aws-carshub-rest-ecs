@@ -26,3 +26,7 @@ variable "max_allocated_storage"{}
 variable "performance_insights_enabled"{}
 variable "performance_insights_retention_period"{}
 variable "monitoring_interval"{}
+variable "enabled_cloudwatch_logs_exports" {
+  type = list(string)
+  default = []
+}

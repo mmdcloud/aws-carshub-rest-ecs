@@ -5,7 +5,10 @@ data "vault_generic_secret" "rds" {
 
 data "aws_caller_identity" "current" {}
 
+# -----------------------------------------------------------------------------------------
 # VPC Configuration
+# -----------------------------------------------------------------------------------------
+
 module "carshub_vpc" {
   source                = "../../modules/vpc/vpc"
   vpc_name              = "carshub_vpc_${var.env}"
@@ -297,6 +300,7 @@ module "carshub_db" {
   username                = tostring(data.vault_generic_secret.rds.data["username"])
   password                = tostring(data.vault_generic_secret.rds.data["password"])
   subnet_group_name       = "carshub_rds_subnet_group"
+  enabled_cloudwatch_logs_exports = ["audit", "error", "general", "slowquery"]
   backup_retention_period = 35
   backup_window           = "03:00-06:00"
   subnet_group_ids = [
@@ -620,7 +624,7 @@ module "carshub_media_cloudfront_distribution" {
 }
 
 # -----------------------------------------------------------------------------------------
-# Load Balancer distribution
+# Load Balancer Configuration
 # -----------------------------------------------------------------------------------------
 
 # Frontend Load Balancer
@@ -631,7 +635,7 @@ module "carshub_frontend_lb" {
   lb_ip_address_type         = "ipv4"
   load_balancer_type         = "application"
   drop_invalid_header_fields = true
-  enable_deletion_protection = false
+  enable_deletion_protection = true
   security_groups            = [module.carshub_frontend_lb_sg.id]
   subnets                    = module.carshub_public_subnets.subnets[*].id
   target_groups = [
@@ -675,7 +679,7 @@ module "carshub_backend_lb" {
   lb_is_internal             = false
   lb_ip_address_type         = "ipv4"
   load_balancer_type         = "application"
-  enable_deletion_protection = false
+  enable_deletion_protection = true
   drop_invalid_header_fields = true
   security_groups            = [module.carshub_backend_lb_sg.id]
   subnets                    = module.carshub_public_subnets.subnets[*].id
@@ -712,7 +716,10 @@ module "carshub_backend_lb" {
   ]
 }
 
-# ECS Cluster
+# -----------------------------------------------------------------------------------------
+# ECS Configuration
+# -----------------------------------------------------------------------------------------
+
 resource "aws_ecs_cluster" "carshub_cluster" {
   name = "carshub_cluster_${var.env}"
   setting {
@@ -804,6 +811,20 @@ module "carshub_frontend_ecs" {
         "cpu" : 1024,
         "memory" : 2048,
         "essential" : true,
+        "healthCheck" : {
+          "command" : ["CMD-SHELL", "curl -f http://localhost:3000/health || exit 1"],
+          "interval" : 30,
+          "timeout" : 5,
+          "retries" : 3,
+          "startPeriod" : 60
+        },
+        "ulimits" : [
+          {
+            "name" : "nofile",
+            "softLimit" : 65536,
+            "hardLimit" : 65536
+          }
+        ]
         "portMappings" : [
           {
             "containerPort" : 3000,
@@ -885,6 +906,20 @@ module "carshub_backend_ecs" {
         "cpu" : 1024,
         "memory" : 2048,
         "essential" : true,
+        "healthCheck" : {
+          "command" : ["CMD-SHELL", "curl -f http://localhost:3000/health || exit 1"],
+          "interval" : 30,
+          "timeout" : 5,
+          "retries" : 3,
+          "startPeriod" : 60
+        },
+        "ulimits" : [
+          {
+            "name" : "nofile",
+            "softLimit" : 65536,
+            "hardLimit" : 65536
+          }
+        ]
         "portMappings" : [
           {
             "containerPort" : 80,
@@ -1012,7 +1047,10 @@ module "carshub_backend_app_autoscaling_policy" {
   ]
 }
 
-# CarsHub cloudwatch alarm notification configuration
+# -----------------------------------------------------------------------------------------
+# Cloudwath Alarm Configuration
+# -----------------------------------------------------------------------------------------
+
 module "carshub_alarm_notifications" {
   source     = "../../modules/sns"
   topic_name = "carshub_cloudwatch_alarm_notification_topic"
@@ -1390,6 +1428,24 @@ module "rds_low_storage" {
   statistic           = "Average"
   threshold           = 10737418240 # 10 GB in bytes
   alarm_description   = "Alarm when RDS free storage < 10 GB"
+  alarm_actions       = [module.carshub_alarm_notifications.topic_arn]
+  ok_actions          = [module.carshub_alarm_notifications.topic_arn]
+  dimensions = {
+    DBInstanceIdentifier = module.carshub_db.name
+  }
+}
+
+module "rds_high_connections" {
+  source              = "../../modules/cloudwatch/cloudwatch-alarm"
+  alarm_name          = "carshub-rds-high-connections-${var.env}"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 2
+  metric_name         = "DatabaseConnections"
+  namespace           = "AWS/RDS"
+  period              = 300
+  statistic           = "Average"
+  threshold           = module.carshub_db.max_connections * 0.8
+  alarm_description   = "Alarm when RDS connections exceed 80% of max"
   alarm_actions       = [module.carshub_alarm_notifications.topic_arn]
   ok_actions          = [module.carshub_alarm_notifications.topic_arn]
   dimensions = {
