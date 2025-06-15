@@ -290,19 +290,19 @@ module "carshub_backend_container_registry" {
 # -----------------------------------------------------------------------------------------
 
 module "carshub_db" {
-  source                  = "../../modules/rds"
-  db_name                 = "carshub_${var.env}"
-  allocated_storage       = 100
-  engine                  = "mysql"
-  engine_version          = "8.0"
-  instance_class          = "db.t4g.large"
-  multi_az                = true
-  username                = tostring(data.vault_generic_secret.rds.data["username"])
-  password                = tostring(data.vault_generic_secret.rds.data["password"])
-  subnet_group_name       = "carshub_rds_subnet_group"
+  source                          = "../../modules/rds"
+  db_name                         = "carshub_${var.env}"
+  allocated_storage               = 100
+  engine                          = "mysql"
+  engine_version                  = "8.0"
+  instance_class                  = "db.t4g.large"
+  multi_az                        = true
+  username                        = tostring(data.vault_generic_secret.rds.data["username"])
+  password                        = tostring(data.vault_generic_secret.rds.data["password"])
+  subnet_group_name               = "carshub_rds_subnet_group"
   enabled_cloudwatch_logs_exports = ["audit", "error", "general", "slowquery"]
-  backup_retention_period = 35
-  backup_window           = "03:00-06:00"
+  backup_retention_period         = 35
+  backup_window                   = "03:00-06:00"
   subnet_group_ids = [
     module.carshub_private_subnets.subnets[0].id,
     module.carshub_private_subnets.subnets[1].id,
@@ -1444,7 +1444,7 @@ module "rds_high_connections" {
   namespace           = "AWS/RDS"
   period              = 300
   statistic           = "Average"
-  threshold           = module.carshub_db.max_connections * 0.8
+  threshold           = 100
   alarm_description   = "Alarm when RDS connections exceed 80% of max"
   alarm_actions       = [module.carshub_alarm_notifications.topic_arn]
   ok_actions          = [module.carshub_alarm_notifications.topic_arn]
