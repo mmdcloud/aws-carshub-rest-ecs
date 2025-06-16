@@ -211,17 +211,17 @@ module "carshub_private_rt" {
   subnets = module.carshub_private_subnets.subnets[*]
   routes = [
     {
-      cidr_block     = "0.0.0.0/0"
+      cidr_block     = module.carshub_public_subnets.subnets[0].cidr_block
       nat_gateway_id = module.carshub_nat.nat[0].id
       gateway_id     = ""
     },
     {
-      cidr_block     = "0.0.0.0/0"
+      cidr_block     = module.carshub_public_subnets.subnets[1].cidr_block
       nat_gateway_id = module.carshub_nat.nat[1].id
       gateway_id     = ""
     },
     {
-      cidr_block     = "0.0.0.0/0"
+      cidr_block     = module.carshub_public_subnets.subnets[2].cidr_block
       nat_gateway_id = module.carshub_nat.nat[2].id
       gateway_id     = ""
     }
@@ -258,6 +258,47 @@ module "carshub_db_credentials" {
 # VPC Flow Logs
 # -----------------------------------------------------------------------------------------
 
+# IAM Role for VPC Flow Logs
+resource "aws_iam_role" "flow_logs_role" {
+  name = "flow-logs-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "vpc-flow-logs.amazonaws.com"
+        }
+      }
+    ]
+  })
+}
+
+# IAM Policy for the Flow Logs Role
+resource "aws_iam_role_policy" "flow_logs_policy" {
+  name = "flow-logs-policy"
+  role = aws_iam_role.flow_logs_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents",
+          "logs:DescribeLogGroups",
+          "logs:DescribeLogStreams"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
 resource "aws_cloudwatch_log_group" "carshub_flow_log_group" {
   name              = "/carshub/application/${var.env}"
   retention_in_days = 365
@@ -265,7 +306,7 @@ resource "aws_cloudwatch_log_group" "carshub_flow_log_group" {
 
 # Add VPC Flow Logs for security monitoring
 resource "aws_flow_log" "carshub_vpc_flow_log" {
-  # iam_role_arn    = aws_iam_role.vpc_flow_log_role.arn
+  iam_role_arn    = aws_iam_role.flow_logs_role.arn
   log_destination = aws_cloudwatch_log_group.carshub_flow_log_group.arn
   traffic_type    = "ALL"
   vpc_id          = module.carshub_vpc.vpc_id
@@ -278,7 +319,7 @@ resource "aws_flow_log" "carshub_vpc_flow_log" {
 # 1. Frontend Repo
 module "carshub_frontend_container_registry" {
   source               = "../../modules/ecr"
-  force_delete         = false
+  force_delete         = true
   scan_on_push         = false
   image_tag_mutability = "IMMUTABLE"
   bash_command         = "bash ${path.cwd}/../../../../frontend/artifact_push.sh carshub_frontend_${var.env} ${var.region} http://${module.carshub_backend_lb.lb_dns_name} ${module.carshub_media_cloudfront_distribution.domain_name}"
@@ -288,7 +329,7 @@ module "carshub_frontend_container_registry" {
 # 2. Backend Repo
 module "carshub_backend_container_registry" {
   source               = "../../modules/ecr"
-  force_delete         = false
+  force_delete         = true
   scan_on_push         = false
   image_tag_mutability = "IMMUTABLE"
   bash_command         = "bash ${path.cwd}/../../../../backend/api/artifact_push.sh carshub_backend_${var.env} ${var.region}"
@@ -298,6 +339,30 @@ module "carshub_backend_container_registry" {
 # -----------------------------------------------------------------------------------------
 # RDS Instance
 # -----------------------------------------------------------------------------------------
+
+## IAM Role for Enhanced Monitoring
+resource "aws_iam_role" "rds_monitoring_role" {
+  name = "rds-monitoring-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "monitoring.rds.amazonaws.com"
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "rds_monitoring_policy" {
+  role       = aws_iam_role.rds_monitoring_role.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonRDSEnhancedMonitoringRole"
+}
+
 
 module "carshub_db" {
   source                          = "../../modules/rds"
@@ -320,12 +385,13 @@ module "carshub_db" {
   ]
   vpc_security_group_ids                = [module.carshub_rds_sg.id]
   publicly_accessible                   = false
-  deletion_protection                   = true
-  skip_final_snapshot                   = false
+  deletion_protection                   = false
+  skip_final_snapshot                   = true
   max_allocated_storage                 = 500
   performance_insights_enabled          = true
   performance_insights_retention_period = 7
   monitoring_interval                   = 60
+  monitoring_role_arn                   = aws_iam_role.rds_monitoring_role.arn
   parameter_group_name                  = "carshub-db-pg-${var.env}"
   parameter_group_family                = "mysql8.0"
   parameters = [
@@ -396,7 +462,7 @@ module "carshub_media_bucket" {
       }
     ]
   })
-  force_destroy = false
+  force_destroy = true
   bucket_notification = {
     queue = [
       {
@@ -427,7 +493,7 @@ module "carshub_media_update_function_code" {
     }
   ]
   versioning_enabled = "Enabled"
-  force_destroy      = false
+  force_destroy      = true
 }
 
 # -----------------------------------------------------------------------------------------
@@ -438,7 +504,7 @@ module "carshub_media_update_function_code_signed" {
   source             = "../../modules/s3"
   bucket_name        = "carshubmediaupdatefunctioncodesigned${var.env}"
   versioning_enabled = "Enabled"
-  force_destroy      = false
+  force_destroy      = true
   bucket_policy      = ""
   cors = [
     {
@@ -645,7 +711,7 @@ module "carshub_frontend_lb" {
   lb_ip_address_type         = "ipv4"
   load_balancer_type         = "application"
   drop_invalid_header_fields = true
-  enable_deletion_protection = true
+  enable_deletion_protection = false
   security_groups            = [module.carshub_frontend_lb_sg.id]
   subnets                    = module.carshub_public_subnets.subnets[*].id
   target_groups = [
@@ -689,7 +755,7 @@ module "carshub_backend_lb" {
   lb_is_internal             = false
   lb_ip_address_type         = "ipv4"
   load_balancer_type         = "application"
-  enable_deletion_protection = true
+  enable_deletion_protection = false
   drop_invalid_header_fields = true
   security_groups            = [module.carshub_backend_lb_sg.id]
   subnets                    = module.carshub_public_subnets.subnets[*].id
@@ -806,8 +872,8 @@ module "carshub_frontend_ecs" {
   source                                   = "../../modules/ecs"
   task_definition_family                   = "carshub_frontend_task_definition_${var.env}"
   task_definition_requires_compatibilities = ["FARGATE"]
-  task_definition_cpu                      = 1024
-  task_definition_memory                   = 2048
+  task_definition_cpu                      = 2048
+  task_definition_memory                   = 4096
   task_definition_execution_role_arn       = aws_iam_role.ecs_task_execution_role.arn
   task_definition_task_role_arn            = aws_iam_role.ecs_task_execution_role.arn
   task_definition_network_mode             = "awsvpc"
@@ -901,8 +967,8 @@ module "carshub_backend_ecs" {
   source                                   = "../../modules/ecs"
   task_definition_family                   = "carshub_backend_task_definition_${var.env}"
   task_definition_requires_compatibilities = ["FARGATE"]
-  task_definition_cpu                      = 1024
-  task_definition_memory                   = 2048
+  task_definition_cpu                      = 2048
+  task_definition_memory                   = 4096
   task_definition_execution_role_arn       = aws_iam_role.ecs_task_execution_role.arn
   task_definition_task_role_arn            = aws_iam_role.ecs_task_execution_role.arn
   task_definition_network_mode             = "awsvpc"
@@ -1612,7 +1678,7 @@ module "carshub_codebuild_backend" {
 
 resource "aws_s3_bucket" "carshub_frontend_codepipeline_bucket" {
   bucket        = "carshub-frontend-codepipeline-bucket-${var.env}"
-  force_destroy = false
+  force_destroy = true
 }
 
 resource "aws_s3_bucket_public_access_block" "carshub_frontend_codepipeline_bucket_pab" {
@@ -1627,7 +1693,7 @@ resource "aws_s3_bucket_public_access_block" "carshub_frontend_codepipeline_buck
 # CodePipeline backend artifact bucket
 resource "aws_s3_bucket" "carshub_backend_codepipeline_bucket" {
   bucket        = "carshub-backend-codepipeline-bucket-${var.env}"
-  force_destroy = false
+  force_destroy = true
 }
 
 resource "aws_s3_bucket_public_access_block" "carshub_backend_codepipeline_bucket_pab" {
