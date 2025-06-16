@@ -1,3 +1,3 @@
-output "id" {
-  value = aws_nat_gateway.nat[*].id
+output "nat" {
+  value = aws_nat_gateway.nat[*]
 }

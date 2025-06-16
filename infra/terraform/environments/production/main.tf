@@ -212,7 +212,17 @@ module "carshub_private_rt" {
   routes = [
     {
       cidr_block     = "0.0.0.0/0"
-      nat_gateway_id = module.carshub_nat.id
+      nat_gateway_id = module.carshub_nat.nat[0].id
+      gateway_id     = ""
+    },
+    {
+      cidr_block     = "0.0.0.0/0"
+      nat_gateway_id = module.carshub_nat.nat[1].id
+      gateway_id     = ""
+    },
+    {
+      cidr_block     = "0.0.0.0/0"
+      nat_gateway_id = module.carshub_nat.nat[2].id
       gateway_id     = ""
     }
   ]
@@ -222,7 +232,7 @@ module "carshub_private_rt" {
 # Nat Gateway
 module "carshub_nat" {
   source      = "../../modules/vpc/nat"
-  subnets     = module.carshub_public_subnets.subnets[*].id
+  subnets     = module.carshub_public_subnets.subnets[*]
   eip_name    = "carshub_vpc_nat_eip"
   nat_gw_name = "carshub_vpc_nat"
   domain      = "vpc"
@@ -812,7 +822,7 @@ module "carshub_frontend_ecs" {
         "memory" : 2048,
         "essential" : true,
         "healthCheck" : {
-          "command" : ["CMD-SHELL", "curl -f http://localhost:3000/health || exit 1"],
+          "command" : ["CMD-SHELL", "curl -f http://localhost:3000/auth/signin || exit 1"],
           "interval" : 30,
           "timeout" : 5,
           "retries" : 3,
@@ -907,7 +917,7 @@ module "carshub_backend_ecs" {
         "memory" : 2048,
         "essential" : true,
         "healthCheck" : {
-          "command" : ["CMD-SHELL", "curl -f http://localhost:3000/health || exit 1"],
+          "command" : ["CMD-SHELL", "curl -f http://localhost:80 || exit 1"],
           "interval" : 30,
           "timeout" : 5,
           "retries" : 3,
@@ -1453,7 +1463,9 @@ module "rds_high_connections" {
   }
 }
 
-# ----------------------------- CodeBuild Configuration -----------------------------
+# -----------------------------------------------------------------------------------------
+# CodeBuild Configuration
+# -----------------------------------------------------------------------------------------
 
 # CodeBuild IAM Role
 data "aws_iam_policy_document" "codebuild_assume_role" {
@@ -1594,8 +1606,10 @@ module "carshub_codebuild_backend" {
   ]
 }
 
-# ----------------------------- CodePipeline Configuration -----------------------------
-# CodePipeline frontend artifact bucket
+# -----------------------------------------------------------------------------------------
+# CodePipeline Configuration
+# -----------------------------------------------------------------------------------------
+
 resource "aws_s3_bucket" "carshub_frontend_codepipeline_bucket" {
   bucket        = "carshub-frontend-codepipeline-bucket-${var.env}"
   force_destroy = false
