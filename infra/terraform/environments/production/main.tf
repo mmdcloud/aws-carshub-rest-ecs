@@ -54,9 +54,10 @@ module "carshub_backend_lb_sg" {
       to_port         = 80
       protocol        = "tcp"
       self            = "false"
-      cidr_blocks     = []
-      security_groups = [module.carshub_frontend_lb_sg.id]
-      description     = "any"
+      cidr_blocks     = ["0.0.0.0/0"]
+      security_groups = []
+      # security_groups = [module.carshub_frontend_lb_sg.id]
+      description = "any"
     }
   ]
   egress = [
