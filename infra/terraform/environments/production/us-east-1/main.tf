@@ -56,7 +56,6 @@ module "carshub_backend_lb_sg" {
       self            = "false"
       cidr_blocks     = ["0.0.0.0/0"]
       security_groups = []
-      # security_groups = [module.carshub_frontend_lb_sg.id]
       description = "any"
     }
   ]
@@ -315,7 +314,7 @@ resource "aws_cloudwatch_log_group" "carshub_flow_log_group" {
 resource "aws_flow_log" "carshub_vpc_flow_log" {
   iam_role_arn    = aws_iam_role.flow_logs_role.arn
   log_destination = aws_cloudwatch_log_group.carshub_flow_log_group.arn
-  traffic_type    = "ALL"
+  traffic_type    = "ALL" 
   vpc_id          = module.carshub_vpc.vpc_id
 }
 
@@ -751,7 +750,19 @@ module "carshub_frontend_lb" {
           target_group_arn = module.carshub_frontend_lb.target_groups[0].arn
         }
       ]
-    }
+    },
+    # TODO : Uncomment this while using HTTPS
+    # {
+    #   listener_port     = 443
+    #   listener_protocol = "HTTPS"
+    #   certificate_arn   = aws_acm_certificate.frontend_cert.arn
+    #   default_actions = [
+    #     {
+    #       type             = "forward"
+    #       target_group_arn = module.carshub_frontend_lb.target_groups[0].arn
+    #     }
+    #   ]
+    # }
   ]
 }
 
@@ -795,7 +806,19 @@ module "carshub_backend_lb" {
           target_group_arn = module.carshub_backend_lb.target_groups[0].arn
         }
       ]
-    }
+    },
+    # TODO : Uncomment this while using HTTPS
+    # {
+    #   listener_port     = 443
+    #   listener_protocol = "HTTPS"
+    #   certificate_arn   = aws_acm_certificate.frontend_cert.arn
+    #   default_actions = [
+    #     {
+    #       type             = "forward"
+    #       target_group_arn = module.carshub_frontend_lb.target_groups[0].arn
+    #     }
+    #   ]
+    # }
   ]
 }
 

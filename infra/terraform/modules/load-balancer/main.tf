@@ -43,11 +43,12 @@ resource "aws_lb_listener" "lb_listener" {
   load_balancer_arn = aws_lb.lb.arn
   port              = var.listeners[count.index].listener_port
   protocol          = var.listeners[count.index].listener_protocol
+  certificate_arn   = var.listeners[count.index].certificate_arn != "" ? var.listeners[count.index].certificate_arn : null
   dynamic "default_action" {
     for_each = var.listeners[count.index].default_actions
     content {
       type             = default_action.value["type"]
       target_group_arn = default_action.value["target_group_arn"]
     }
-  }  
+  }
 }

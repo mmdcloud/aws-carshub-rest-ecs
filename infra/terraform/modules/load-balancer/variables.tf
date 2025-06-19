@@ -29,6 +29,7 @@ variable "listeners" {
   type = list(object({
     listener_port     = string
     listener_protocol = string
+    certificate_arn   = string
     default_actions = list(object({
       type             = string
       target_group_arn = string
