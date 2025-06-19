@@ -205,39 +205,6 @@ module "carshub_public_rt" {
   vpc_id = module.carshub_vpc.vpc_id
 }
 
-# Carshub Private Route Table
-# module "carshub_private_rt" {
-#   source  = "../../modules/vpc/route_tables"
-#   name    = "carshub private route table_${var.env}"
-#   subnets = module.carshub_private_subnets.subnets[*]
-#   routes = [
-#     {
-#       cidr_block     = module.carshub_private_subnets.subnets[0].cidr_block
-#       nat_gateway_id = module.carshub_nat.nat[0].id
-#       gateway_id     = ""
-#     },
-#     {
-#       cidr_block     = module.carshub_private_subnets.subnets[1].cidr_block
-#       nat_gateway_id = module.carshub_nat.nat[1].id
-#       gateway_id     = ""
-#     },
-#     {
-#       cidr_block     = module.carshub_private_subnets.subnets[2].cidr_block
-#       nat_gateway_id = module.carshub_nat.nat[2].id
-#       gateway_id     = ""
-#     }
-#   ]
-#   vpc_id = module.carshub_vpc.vpc_id
-# }
-
-# Nat Gateway
-# module "carshub_nat" {
-#   source      = "../../modules/vpc/nat"
-#   subnets     = module.carshub_public_subnets.subnets[*]
-#   eip_name    = "carshub_vpc_nat_eip"
-#   nat_gw_name = "carshub_vpc_nat"
-#   domain      = "vpc"
-# }
 resource "aws_eip" "carshub_nat_eip" {
   count  = length(module.carshub_public_subnets.subnets)
   domain = "vpc"
