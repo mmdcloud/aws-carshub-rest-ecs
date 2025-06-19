@@ -425,8 +425,8 @@ module "carshub_db" {
   ]
   vpc_security_group_ids                = [module.carshub_rds_sg.id]
   publicly_accessible                   = false
-  deletion_protection                   = false
-  skip_final_snapshot                   = true
+  deletion_protection                   = true
+  skip_final_snapshot                   = false
   max_allocated_storage                 = 500
   performance_insights_enabled          = true
   performance_insights_retention_period = 7
@@ -502,7 +502,7 @@ module "carshub_media_bucket" {
       }
     ]
   })
-  force_destroy = true
+  force_destroy = false
   bucket_notification = {
     queue = [
       {
@@ -533,7 +533,7 @@ module "carshub_media_update_function_code" {
     }
   ]
   versioning_enabled = "Enabled"
-  force_destroy      = true
+  force_destroy      = false
 }
 
 # -----------------------------------------------------------------------------------------
@@ -544,7 +544,7 @@ module "carshub_media_update_function_code_signed" {
   source             = "../../modules/s3"
   bucket_name        = "carshubmediaupdatefunctioncodesigned${var.env}"
   versioning_enabled = "Enabled"
-  force_destroy      = true
+  force_destroy      = false
   bucket_policy      = ""
   cors = [
     {
@@ -751,7 +751,7 @@ module "carshub_frontend_lb" {
   lb_ip_address_type         = "ipv4"
   load_balancer_type         = "application"
   drop_invalid_header_fields = true
-  enable_deletion_protection = false
+  enable_deletion_protection = true
   security_groups            = [module.carshub_frontend_lb_sg.id]
   subnets                    = module.carshub_public_subnets.subnets[*].id
   target_groups = [
@@ -795,7 +795,7 @@ module "carshub_backend_lb" {
   lb_is_internal             = false
   lb_ip_address_type         = "ipv4"
   load_balancer_type         = "application"
-  enable_deletion_protection = false
+  enable_deletion_protection = true
   drop_invalid_header_fields = true
   security_groups            = [module.carshub_backend_lb_sg.id]
   subnets                    = module.carshub_public_subnets.subnets[*].id
@@ -1720,7 +1720,7 @@ module "carshub_codebuild_backend" {
 
 resource "aws_s3_bucket" "carshub_frontend_codepipeline_bucket" {
   bucket        = "carshub-frontend-codepipeline-bucket-${var.env}"
-  force_destroy = true
+  force_destroy = false
 }
 
 resource "aws_s3_bucket_public_access_block" "carshub_frontend_codepipeline_bucket_pab" {
@@ -1735,7 +1735,7 @@ resource "aws_s3_bucket_public_access_block" "carshub_frontend_codepipeline_buck
 # CodePipeline backend artifact bucket
 resource "aws_s3_bucket" "carshub_backend_codepipeline_bucket" {
   bucket        = "carshub-backend-codepipeline-bucket-${var.env}"
-  force_destroy = true
+  force_destroy = false
 }
 
 resource "aws_s3_bucket_public_access_block" "carshub_backend_codepipeline_bucket_pab" {
