@@ -1684,7 +1684,7 @@ module "carshub_codebuild_backend" {
   env_type                      = "LINUX_CONTAINER"
   fetch_submodules              = true
   force_destroy_cache_bucket    = false
-  image_pull_credentials_type   = "CODEBUILD"
+  image_pull_credentials_type   = "CODEBUILD" 
   privileged_mode               = true
   source_location               = "https://github.com/mmdcloud/aws-carshub-rest-ecs.git"
   source_git_clone_depth        = "1"
