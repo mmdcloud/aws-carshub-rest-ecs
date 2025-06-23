@@ -22,6 +22,16 @@ module "global_accelerator" {
           weight                         = 128
         }
       ]
+    },
+    {
+      endpoint_group_region = "us-west-2"
+      endpoint_configuration = [
+        {
+          client_ip_preservation_enabled = true
+          endpoint_id                    = "arn:aws:elasticloadbalancing:us-east-1:123456789012:loadbalancer/app/my-load-balancer/50dc6c495c0c9188"
+          weight                         = 128
+        }
+      ]
     }
   ]
 }

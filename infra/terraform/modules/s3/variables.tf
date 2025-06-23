@@ -37,3 +37,14 @@ variable "bucket_notification" {
     lambda_function = []
   }
 }
+variable "lifecycle_policies" {
+  type = list(object({
+    id     = string
+    status = string
+    prefix = string
+    tags   = map(string)
+    expiration_days = number
+    noncurrent_version_expiration_days = number
+  }))
+  default = []
+}
