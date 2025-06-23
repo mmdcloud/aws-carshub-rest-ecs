@@ -1,4 +1,4 @@
-resource "aws_route53_zone" "primary" {
+resource "aws_route53_zone" "hosted_zone" {
   name = var.domain_name
 
   tags = merge(
@@ -10,10 +10,10 @@ resource "aws_route53_zone" "primary" {
 }
 
 # DNS Security (DNSSEC)
-resource "aws_route53_key_signing_key" "primary" {
+resource "aws_route53_key_signing_key" "signing_key" {
   count = var.enable_dnssec ? 1 : 0
 
-  hosted_zone_id             = aws_route53_zone.primary.hosted_zone_id
+  hosted_zone_id             = aws_route53_zone.hosted_zone.hosted_zone_id
   key_management_service_arn = aws_kms_key.dnssec[0].arn
   name                       = "${var.domain_name}-dnssec-key"
 }
@@ -21,13 +21,13 @@ resource "aws_route53_key_signing_key" "primary" {
 resource "aws_route53_hosted_zone_dnssec" "primary" {
   count = var.enable_dnssec ? 1 : 0
 
-  hosted_zone_id = aws_route53_key_signing_key.primary[0].hosted_zone_id
+  hosted_zone_id = aws_route53_key_signing_key.signing_key[0].hosted_zone_id
 
-  depends_on = [aws_route53_key_signing_key.primary]
+  depends_on = [aws_route53_key_signing_key.signing_key]
 }
 
 # Health Checks for Failover
-resource "aws_route53_health_check" "primary_region" {
+resource "aws_route53_health_check" "health_check" {
   for_each = var.health_checks
 
   ip_address        = each.value.ip_address
@@ -49,7 +49,7 @@ resource "aws_route53_health_check" "primary_region" {
 resource "aws_route53_record" "primary" {
   for_each = var.records
 
-  zone_id = aws_route53_zone.primary.zone_id
+  zone_id = aws_route53_zone.hosted_zone.zone_id
   name    = each.value.name
   type    = each.value.type
   ttl     = each.value.ttl
@@ -88,12 +88,4 @@ resource "aws_route53_record" "primary" {
       subdivision = geolocation_routing_policy.value.subdivision
     }
   }
-}
-
-# VPC Association for Private Zones
-resource "aws_route53_zone_association" "vpc" {
-  for_each = var.private_zone_vpc_ids
-
-  zone_id = aws_route53_zone.primary.zone_id
-  vpc_id  = each.value
 }

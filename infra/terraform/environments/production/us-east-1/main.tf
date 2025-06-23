@@ -468,6 +468,24 @@ module "carshub_media_bucket" {
       }
     ]
   })
+  lifecycle_policies = [
+    {
+      id       = "Expire old media files"
+      status   = "Enabled"
+      prefix   = "images/"
+      tags     = {}
+      expiration_days = 365
+      noncurrent_version_expiration_days = 30
+    },
+    {
+      id       = "Expire old documents"
+      status   = "Enabled"
+      prefix   = "documents/"
+      tags     = {}
+      expiration_days = 365
+      noncurrent_version_expiration_days = 30
+    }
+  ]
   force_destroy = false
   bucket_notification = {
     queue = [
