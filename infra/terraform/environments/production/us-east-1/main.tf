@@ -328,7 +328,7 @@ module "carshub_frontend_container_registry" {
   force_delete         = true
   scan_on_push         = false
   image_tag_mutability = "IMMUTABLE"
-  bash_command         = "bash ${path.cwd}/../../../../frontend/artifact_push.sh carshub_frontend_${var.env} ${var.region} http://${module.carshub_backend_lb.lb_dns_name} ${module.carshub_media_cloudfront_distribution.domain_name}"
+  bash_command         = "bash ${path.cwd}/../../../../src/frontend/artifact_push.sh carshub_frontend_${var.env} ${var.region} http://${module.carshub_backend_lb.lb_dns_name} ${module.carshub_media_cloudfront_distribution.domain_name}"
   name                 = "carshub_frontend_${var.env}"
 }
 
@@ -338,7 +338,7 @@ module "carshub_backend_container_registry" {
   force_delete         = true
   scan_on_push         = false
   image_tag_mutability = "IMMUTABLE"
-  bash_command         = "bash ${path.cwd}/../../../../backend/api/artifact_push.sh carshub_backend_${var.env} ${var.region}"
+  bash_command         = "bash ${path.cwd}/../../../../src/backend/api/artifact_push.sh carshub_backend_${var.env} ${var.region}"
   name                 = "carshub_backend_${var.env}"
 }
 

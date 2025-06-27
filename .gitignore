@@ -1,5 +1,5 @@
-frontend/.env
-backend/api/.env
+src/frontend/.env
+src/backend/api/.env
 
 infra/terraform/environments/dev/us-east-1/terraform.*
 infra/terraform/environments/dev/us-east-1/.terraform*
