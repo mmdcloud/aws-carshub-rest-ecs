@@ -1,0 +1,13 @@
+digraph INFRA {
+  node [ color = "black", fillcolor = "#E6E6E6", height =1, style = "filled,bold,rounded", fontname = "Arial" ];
+  "ECR Repository" [ label = "ECR Repository
+(AWS::ECR::Repository)", shape =cylinder, fillcolor = "#FFF5CD" ];
+  "Docker Image" [ label = "Docker Image
+(Docker::Image)", shape =rectangle, fillcolor = "#B7E0FF" ];
+  "MySQL Database" [ label = "MySQL Database
+(AWS::RDS::DBInstance)", shape =cylinder, fillcolor = "#FFCFB3" ];
+  "NestJS Application" [ label = "NestJS Application
+(Custom::NestJSApp)", shape =rectangle, fillcolor = "#B7E0FF" ];
+  "Docker Image" -> "ECR Repository";
+  "NestJS Application" -> "MySQL Database";
+}
