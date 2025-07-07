@@ -161,15 +161,15 @@ module "carshub_public_subnets" {
   subnets = [
     {
       subnet = "10.0.1.0/24"
-      az     = "us-east-1a"
+      az     = "${var.region}a"
     },
     {
       subnet = "10.0.2.0/24"
-      az     = "us-east-1b"
+      az     = "${var.region}b"
     },
     {
       subnet = "10.0.3.0/24"
-      az     = "us-east-1c"
+      az     = "${var.region}c"
     }
   ]
   vpc_id                  = module.carshub_vpc.vpc_id
@@ -183,15 +183,15 @@ module "carshub_private_subnets" {
   subnets = [
     {
       subnet = "10.0.6.0/24"
-      az     = "us-east-1a"
+      az     = "${var.region}a"
     },
     {
       subnet = "10.0.5.0/24"
-      az     = "us-east-1b"
+      az     = "${var.region}b"
     },
     {
       subnet = "10.0.4.0/24"
-      az     = "us-east-1c"
+      az     = "${var.region}c"
     }
   ]
   vpc_id                  = module.carshub_vpc.vpc_id
@@ -579,7 +579,7 @@ module "carshub_media_events_queue" {
         Effect    = "Allow"
         Principal = { Service = "s3.amazonaws.com" }
         Action    = "sqs:SendMessage"
-        Resource  = "arn:aws:sqs:us-east-1:*:carshub-media-events-queue-${var.env}"
+        Resource  = "arn:aws:sqs:${var.region}:*:carshub-media-events-queue-${var.env}"
         Condition = {
           ArnEquals = {
             "aws:SourceArn" = module.carshub_media_bucket.arn
@@ -956,7 +956,7 @@ module "carshub_frontend_ecs" {
           "logDriver" : "awslogs",
           "options" : {
             "awslogs-group" : "${module.carshub_frontend_ecs_log_group.name}",
-            "awslogs-region" : "us-east-1",
+            "awslogs-region" : "${var.region}",
             "awslogs-stream-prefix" : "ecs"
           }
         },
@@ -1052,7 +1052,7 @@ module "carshub_backend_ecs" {
           "logDriver" : "awslogs",
           "options" : {
             "awslogs-group" : "${module.carshub_backend_ecs_log_group.name}",
-            "awslogs-region" : "us-east-1",
+            "awslogs-region" : "${var.region}",
             "awslogs-stream-prefix" : "ecs"
           }
         },
@@ -1284,27 +1284,7 @@ module "carshub_frontend_ecs_alb_high_response_time" {
   ok_actions          = [module.carshub_alarm_notifications.topic_arn]
 
   dimensions = {
-    LoadBalancer = module.carshub_frontend_lb.arn_suffix
-  }
-}
-
-# HTTP 5XX Error Rate Alarm
-module "carshub_frontend_lb_high_5xx_errors" {
-  source              = "../../../modules/cloudwatch/cloudwatch-alarm"
-  alarm_name          = "${module.carshub_frontend_lb.name}-high-5xx-errors"
-  comparison_operator = "GreaterThanThreshold"
-  evaluation_periods  = "2"
-  metric_name         = "HTTPCode_ELB_5XX_Count"
-  namespace           = "AWS/ApplicationELB"
-  period              = "300"
-  statistic           = "Sum"
-  threshold           = "10"
-  alarm_description   = "This metric monitors 5XX errors from the load balancer"
-  alarm_actions       = [module.carshub_alarm_notifications.topic_arn]
-  ok_actions          = [module.carshub_alarm_notifications.topic_arn]
-
-  dimensions = {
-    LoadBalancer = module.carshub_frontend_lb.arn_suffix
+    LoadBalancer = module.carshub_frontend_lb.arn
   }
 }
 
@@ -1714,7 +1694,7 @@ module "carshub_codebuild_backend" {
   env_type                      = "LINUX_CONTAINER"
   fetch_submodules              = true
   force_destroy_cache_bucket    = false
-  image_pull_credentials_type   = "CODEBUILD" 
+  image_pull_credentials_type   = "CODEBUILD"
   privileged_mode               = true
   source_location               = "https://github.com/mmdcloud/aws-carshub-rest-ecs.git"
   source_git_clone_depth        = "1"

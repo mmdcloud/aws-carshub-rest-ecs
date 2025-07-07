@@ -16,6 +16,7 @@ module "global_accelerator" {
       to_port   = 443
     }
   ]
+  
   endpoint_groups = [
     {
       endpoint_group_region = "us-east-1"

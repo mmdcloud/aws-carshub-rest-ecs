@@ -31,7 +31,16 @@ module "carshub_frontend_lb_sg" {
       self            = "false"
       cidr_blocks     = ["0.0.0.0/0"]
       security_groups = []
-      description     = "any"
+      description     = "HTTP traffic"
+    },
+    {
+      from_port       = 443
+      to_port         = 443
+      protocol        = "tcp"
+      self            = "false"
+      cidr_blocks     = ["0.0.0.0/0"]
+      security_groups = []
+      description     = "HTTPS traffic"
     }
   ]
   egress = [
@@ -56,7 +65,7 @@ module "carshub_backend_lb_sg" {
       self            = "false"
       cidr_blocks     = ["0.0.0.0/0"]
       security_groups = []
-      description = "any"
+      description     = "any"
     }
   ]
   egress = [
@@ -152,15 +161,15 @@ module "carshub_public_subnets" {
   subnets = [
     {
       subnet = "10.0.1.0/24"
-      az     = "us-west-2a"
+      az     = "${var.region}a"
     },
     {
       subnet = "10.0.2.0/24"
-      az     = "us-west-2b"
+      az     = "${var.region}b"
     },
     {
       subnet = "10.0.3.0/24"
-      az     = "us-west-2c"
+      az     = "${var.region}c"
     }
   ]
   vpc_id                  = module.carshub_vpc.vpc_id
@@ -174,15 +183,15 @@ module "carshub_private_subnets" {
   subnets = [
     {
       subnet = "10.0.6.0/24"
-      az     = "us-west-2a"
+      az     = "${var.region}a"
     },
     {
       subnet = "10.0.5.0/24"
-      az     = "us-west-2b"
+      az     = "${var.region}b"
     },
     {
       subnet = "10.0.4.0/24"
-      az     = "us-west-2c"
+      az     = "${var.region}c"
     }
   ]
   vpc_id                  = module.carshub_vpc.vpc_id
@@ -314,7 +323,7 @@ resource "aws_cloudwatch_log_group" "carshub_flow_log_group" {
 resource "aws_flow_log" "carshub_vpc_flow_log" {
   iam_role_arn    = aws_iam_role.flow_logs_role.arn
   log_destination = aws_cloudwatch_log_group.carshub_flow_log_group.arn
-  traffic_type    = "ALL" 
+  traffic_type    = "ALL"
   vpc_id          = module.carshub_vpc.vpc_id
 }
 
@@ -328,7 +337,7 @@ module "carshub_frontend_container_registry" {
   force_delete         = true
   scan_on_push         = false
   image_tag_mutability = "IMMUTABLE"
-  bash_command         = "bash ${path.cwd}/../../../../frontend/artifact_push.sh carshub_frontend_${var.env} ${var.region} http://${module.carshub_backend_lb.lb_dns_name} ${module.carshub_media_cloudfront_distribution.domain_name}"
+  bash_command         = "bash ${path.cwd}/../../../../src/frontend/artifact_push.sh carshub_frontend_${var.env} ${var.region} http://${module.carshub_backend_lb.lb_dns_name} ${module.carshub_media_cloudfront_distribution.domain_name}"
   name                 = "carshub_frontend_${var.env}"
 }
 
@@ -338,7 +347,7 @@ module "carshub_backend_container_registry" {
   force_delete         = true
   scan_on_push         = false
   image_tag_mutability = "IMMUTABLE"
-  bash_command         = "bash ${path.cwd}/../../../../backend/api/artifact_push.sh carshub_backend_${var.env} ${var.region}"
+  bash_command         = "bash ${path.cwd}/../../../../src/backend/api/artifact_push.sh carshub_backend_${var.env} ${var.region}"
   name                 = "carshub_backend_${var.env}"
 }
 
@@ -374,9 +383,10 @@ module "carshub_db" {
   source                          = "../../../modules/rds"
   db_name                         = "carshub_${var.env}"
   allocated_storage               = 100
+  storage_type                    = "gp3"
   engine                          = "mysql"
-  engine_version                  = "8.0"
-  instance_class                  = "db.t4g.large"
+  engine_version                  = "8.0.35"
+  instance_class                  = "db.r6g.large"
   multi_az                        = true
   username                        = tostring(data.vault_generic_secret.rds.data["username"])
   password                        = tostring(data.vault_generic_secret.rds.data["password"])
@@ -468,6 +478,8 @@ module "carshub_media_bucket" {
       }
     ]
   })
+  # Note: Lifecycle policies should be configured in the S3 module
+  # or as separate aws_s3_bucket_lifecycle_configuration resources
   force_destroy = false
   bucket_notification = {
     queue = [
@@ -567,7 +579,7 @@ module "carshub_media_events_queue" {
         Effect    = "Allow"
         Principal = { Service = "s3.amazonaws.com" }
         Action    = "sqs:SendMessage"
-        Resource  = "arn:aws:sqs:us-east-1:*:carshub-media-events-queue-${var.env}"
+        Resource  = "arn:aws:sqs:${var.region}:*:carshub-media-events-queue-${var.env}"
         Condition = {
           ArnEquals = {
             "aws:SourceArn" = module.carshub_media_bucket.arn
@@ -744,6 +756,7 @@ module "carshub_frontend_lb" {
     {
       listener_port     = 80
       listener_protocol = "HTTP"
+      certificate_arn   = null
       default_actions = [
         {
           type             = "forward"
@@ -800,6 +813,7 @@ module "carshub_backend_lb" {
     {
       listener_port     = 80
       listener_protocol = "HTTP"
+      certificate_arn   = null
       default_actions = [
         {
           type             = "forward"
@@ -942,7 +956,7 @@ module "carshub_frontend_ecs" {
           "logDriver" : "awslogs",
           "options" : {
             "awslogs-group" : "${module.carshub_frontend_ecs_log_group.name}",
-            "awslogs-region" : "us-east-1",
+            "awslogs-region" : "${var.region}",
             "awslogs-stream-prefix" : "ecs"
           }
         },
@@ -1038,7 +1052,7 @@ module "carshub_backend_ecs" {
           "logDriver" : "awslogs",
           "options" : {
             "awslogs-group" : "${module.carshub_backend_ecs_log_group.name}",
-            "awslogs-region" : "us-east-1",
+            "awslogs-region" : "${var.region}",
             "awslogs-stream-prefix" : "ecs"
           }
         },
@@ -1264,15 +1278,13 @@ module "carshub_frontend_ecs_alb_high_response_time" {
   namespace           = "AWS/ApplicationELB"
   period              = "60"
   statistic           = "Average"
-  extended_statistic  = "p95"
-  threshold           = "1" # 1 second response time
-  alarm_description   = "This metric monitors ALB target response time (p95)"
+  threshold           = "2"
+  alarm_description   = "This metric monitors ALB target response time"
   alarm_actions       = [module.carshub_alarm_notifications.topic_arn]
   ok_actions          = [module.carshub_alarm_notifications.topic_arn]
 
   dimensions = {
-    TargetGroup  = module.carshub_frontend_lb.target_groups[0].arn
-    LoadBalancer = "${module.carshub_frontend_lb.arn}"
+    LoadBalancer = module.carshub_frontend_lb.arn
   }
 }
 
