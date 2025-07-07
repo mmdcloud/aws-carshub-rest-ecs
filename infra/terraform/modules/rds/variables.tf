@@ -16,6 +16,7 @@ variable "parameters" {
   }))
 }
 variable "skip_final_snapshot" {}
+variable "storage_type" {}
 variable "subnet_group_name" {}
 variable "subnet_group_ids" {}
 variable "vpc_security_group_ids" {}

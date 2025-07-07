@@ -31,7 +31,16 @@ module "carshub_frontend_lb_sg" {
       self            = "false"
       cidr_blocks     = ["0.0.0.0/0"]
       security_groups = []
-      description     = "any"
+      description     = "HTTP traffic"
+    },
+    {
+      from_port       = 443
+      to_port         = 443
+      protocol        = "tcp"
+      self            = "false"
+      cidr_blocks     = ["0.0.0.0/0"]
+      security_groups = []
+      description     = "HTTPS traffic"
     }
   ]
   egress = [
@@ -374,9 +383,10 @@ module "carshub_db" {
   source                          = "../../../modules/rds"
   db_name                         = "carshub_${var.env}"
   allocated_storage               = 100
+  storage_type                    = "gp3"
   engine                          = "mysql"
-  engine_version                  = "8.0"
-  instance_class                  = "db.t4g.large"
+  engine_version                  = "8.0.35"
+  instance_class                  = "db.r6g.large"
   multi_az                        = true
   username                        = tostring(data.vault_generic_secret.rds.data["username"])
   password                        = tostring(data.vault_generic_secret.rds.data["password"])
@@ -468,24 +478,8 @@ module "carshub_media_bucket" {
       }
     ]
   })
-  lifecycle_policies = [
-    {
-      id       = "Expire old media files"
-      status   = "Enabled"
-      prefix   = "images/"
-      tags     = {}
-      expiration_days = 365
-      noncurrent_version_expiration_days = 30
-    },
-    {
-      id       = "Expire old documents"
-      status   = "Enabled"
-      prefix   = "documents/"
-      tags     = {}
-      expiration_days = 365
-      noncurrent_version_expiration_days = 30
-    }
-  ]
+  # Note: Lifecycle policies should be configured in the S3 module
+  # or as separate aws_s3_bucket_lifecycle_configuration resources
   force_destroy = false
   bucket_notification = {
     queue = [
@@ -1284,15 +1278,33 @@ module "carshub_frontend_ecs_alb_high_response_time" {
   namespace           = "AWS/ApplicationELB"
   period              = "60"
   statistic           = "Average"
-  extended_statistic  = "p95"
-  threshold           = "1" # 1 second response time
-  alarm_description   = "This metric monitors ALB target response time (p95)"
+  threshold           = "2"
+  alarm_description   = "This metric monitors ALB target response time"
   alarm_actions       = [module.carshub_alarm_notifications.topic_arn]
   ok_actions          = [module.carshub_alarm_notifications.topic_arn]
 
   dimensions = {
-    TargetGroup  = module.carshub_frontend_lb.target_groups[0].arn
-    LoadBalancer = "${module.carshub_frontend_lb.arn}"
+    LoadBalancer = module.carshub_frontend_lb.arn_suffix
+  }
+}
+
+# HTTP 5XX Error Rate Alarm
+module "carshub_frontend_lb_high_5xx_errors" {
+  source              = "../../../modules/cloudwatch/cloudwatch-alarm"
+  alarm_name          = "${module.carshub_frontend_lb.name}-high-5xx-errors"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = "2"
+  metric_name         = "HTTPCode_ELB_5XX_Count"
+  namespace           = "AWS/ApplicationELB"
+  period              = "300"
+  statistic           = "Sum"
+  threshold           = "10"
+  alarm_description   = "This metric monitors 5XX errors from the load balancer"
+  alarm_actions       = [module.carshub_alarm_notifications.topic_arn]
+  ok_actions          = [module.carshub_alarm_notifications.topic_arn]
+
+  dimensions = {
+    LoadBalancer = module.carshub_frontend_lb.arn_suffix
   }
 }
 

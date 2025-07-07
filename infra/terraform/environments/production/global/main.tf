@@ -1,7 +1,7 @@
 # Global accelerator configuration for production environment
 module "global_accelerator" {
   source          = "../../../modules/global-accelerator"
-  name            = "ga"
+  name            = "carshub-ga-${var.env}"
   ip_address_type = "IPV4"
   enabled         = true
   client_affinity = "SOURCE_IP"
@@ -10,6 +10,10 @@ module "global_accelerator" {
     {
       from_port = 80
       to_port   = 80
+    },
+    {
+      from_port = 443
+      to_port   = 443
     }
   ]
   endpoint_groups = [
@@ -18,7 +22,7 @@ module "global_accelerator" {
       endpoint_configuration = [
         {
           client_ip_preservation_enabled = true
-          endpoint_id                    = "arn:aws:elasticloadbalancing:us-east-1:123456789012:loadbalancer/app/my-load-balancer/50dc6c495c0c9188"
+          endpoint_id                    = var.us_east_1_lb_arn
           weight                         = 128
         }
       ]
@@ -28,7 +32,7 @@ module "global_accelerator" {
       endpoint_configuration = [
         {
           client_ip_preservation_enabled = true
-          endpoint_id                    = "arn:aws:elasticloadbalancing:us-east-1:123456789012:loadbalancer/app/my-load-balancer/50dc6c495c0c9188"
+          endpoint_id                    = var.us_west_2_lb_arn
           weight                         = 128
         }
       ]

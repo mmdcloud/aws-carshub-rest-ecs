@@ -152,15 +152,15 @@ module "carshub_public_subnets" {
   subnets = [
     {
       subnet = "10.0.1.0/24"
-      az     = "us-east-1a"
+      az     = "us-west-2a"
     },
     {
       subnet = "10.0.2.0/24"
-      az     = "us-east-1b"
+      az     = "us-west-2b"
     },
     {
       subnet = "10.0.3.0/24"
-      az     = "us-east-1c"
+      az     = "us-west-2c"
     }
   ]
   vpc_id                  = module.carshub_vpc.vpc_id
@@ -174,15 +174,15 @@ module "carshub_private_subnets" {
   subnets = [
     {
       subnet = "10.0.6.0/24"
-      az     = "us-east-1a"
+      az     = "us-west-2a"
     },
     {
       subnet = "10.0.5.0/24"
-      az     = "us-east-1b"
+      az     = "us-west-2b"
     },
     {
       subnet = "10.0.4.0/24"
-      az     = "us-east-1c"
+      az     = "us-west-2c"
     }
   ]
   vpc_id                  = module.carshub_vpc.vpc_id
