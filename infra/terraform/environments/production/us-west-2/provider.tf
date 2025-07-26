@@ -9,12 +9,12 @@ terraform {
       version = "~> 4.0"
     }
   }
-  # backend "s3" {
-  #   bucket         = "carshubtfstate"
-  #   key            = "prod/terraform.tfstate"
-  #   region         = "us-east-1"
-  #   dynamodb_table = "carshub-terraform-locks-prod"
-  # }
+  backend "s3" {
+    bucket         = "carshubuswest2tfstate"
+    key            = "prod/us-west-2/terraform.tfstate"
+    region         = "us-west-2"
+    dynamodb_table = "carshub-terraform-state-prod-uswest2"
+  }
 }
 
 # Configure the AWS Provider

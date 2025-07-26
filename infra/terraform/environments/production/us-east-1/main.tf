@@ -8,7 +8,6 @@ data "aws_caller_identity" "current" {}
 # -----------------------------------------------------------------------------------------
 # VPC Configuration
 # -----------------------------------------------------------------------------------------
-
 module "carshub_vpc" {
   source                = "../../../modules/vpc/vpc"
   vpc_name              = "carshub_vpc_${var.env}"
@@ -257,7 +256,6 @@ resource "aws_route_table_association" "carshub_private_rt_association" {
 # -----------------------------------------------------------------------------------------
 # Secrets Manager
 # -----------------------------------------------------------------------------------------
-
 module "carshub_db_credentials" {
   source                  = "../../../modules/secrets-manager"
   name                    = "carshub_rds_secrets_${var.env}"
@@ -683,7 +681,6 @@ module "carshub_media_update_function" {
 # -----------------------------------------------------------------------------------------
 # Cloudfront distribution
 # -----------------------------------------------------------------------------------------
-
 module "carshub_media_cloudfront_distribution" {
   source                                = "../../../modules/cloudfront"
   distribution_name                     = "carshub_media_cdn_${var.env}"
@@ -765,17 +762,17 @@ module "carshub_frontend_lb" {
       ]
     },
     # TODO : Uncomment this while using HTTPS
-    # {
-    #   listener_port     = 443
-    #   listener_protocol = "HTTPS"
-    #   certificate_arn   = aws_acm_certificate.frontend_cert.arn
-    #   default_actions = [
-    #     {
-    #       type             = "forward"
-    #       target_group_arn = module.carshub_frontend_lb.target_groups[0].arn
-    #     }
-    #   ]
-    # }
+    {
+      listener_port     = 443
+      listener_protocol = "HTTPS"
+      certificate_arn   = aws_acm_certificate.frontend_cert.arn
+      default_actions = [
+        {
+          type             = "forward"
+          target_group_arn = module.carshub_frontend_lb.target_groups[0].arn
+        }
+      ]
+    }
   ]
 }
 
@@ -822,17 +819,17 @@ module "carshub_backend_lb" {
       ]
     },
     # TODO : Uncomment this while using HTTPS
-    # {
-    #   listener_port     = 443
-    #   listener_protocol = "HTTPS"
-    #   certificate_arn   = aws_acm_certificate.frontend_cert.arn
-    #   default_actions = [
-    #     {
-    #       type             = "forward"
-    #       target_group_arn = module.carshub_frontend_lb.target_groups[0].arn
-    #     }
-    #   ]
-    # }
+    {
+      listener_port     = 443
+      listener_protocol = "HTTPS"
+      certificate_arn   = aws_acm_certificate.frontend_cert.arn
+      default_actions = [
+        {
+          type             = "forward"
+          target_group_arn = module.carshub_frontend_lb.target_groups[0].arn
+        }
+      ]
+    }
   ]
 }
 
@@ -989,7 +986,7 @@ module "carshub_frontend_ecs" {
   service_cluster             = aws_ecs_cluster.carshub_cluster.id
   service_launch_type         = "FARGATE"
   service_scheduling_strategy = "REPLICA"
-  service_desired_count       = 1
+  service_desired_count       = 2
 
   deployment_controller_type = "ECS"
   load_balancer_config = [{
@@ -1093,7 +1090,7 @@ module "carshub_backend_ecs" {
   service_cluster             = aws_ecs_cluster.carshub_cluster.id
   service_launch_type         = "FARGATE"
   service_scheduling_strategy = "REPLICA"
-  service_desired_count       = 1
+  service_desired_count       = 2
 
   deployment_controller_type = "ECS"
   load_balancer_config = [{
