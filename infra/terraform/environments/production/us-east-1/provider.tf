@@ -10,10 +10,10 @@ terraform {
     }
   }
   backend "s3" {
-    bucket         = "carshubuseast1tfstate"
-    key            = "prod/us-east-1/terraform.tfstate"
-    region         = "us-east-1"
-    dynamodb_table = "carshub-terraform-state-prod-useast1"
+    bucket       = "carshubuseast1tfstate"
+    key          = "prod/us-east-1/terraform.tfstate"
+    region       = "us-east-1"
+    use_lockfile = true
   }
 }
 

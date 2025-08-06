@@ -1,6 +1,6 @@
 #!/bin/bash
 mkdir frontend-code
-cp -r ../../../../frontend/* frontend-code/
+cp -r ../../../../../src/frontend/* frontend-code/
 cd frontend-code
 
 cat > .env << EOL
