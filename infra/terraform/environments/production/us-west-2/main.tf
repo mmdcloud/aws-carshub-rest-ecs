@@ -8,7 +8,6 @@ data "aws_caller_identity" "current" {}
 # -----------------------------------------------------------------------------------------
 # VPC Configuration
 # -----------------------------------------------------------------------------------------
-
 module "carshub_vpc" {
   source                = "../../../modules/vpc/vpc"
   vpc_name              = "carshub_vpc_${var.env}"
@@ -257,7 +256,6 @@ resource "aws_route_table_association" "carshub_private_rt_association" {
 # -----------------------------------------------------------------------------------------
 # Secrets Manager
 # -----------------------------------------------------------------------------------------
-
 module "carshub_db_credentials" {
   source                  = "../../../modules/secrets-manager"
   name                    = "carshub_rds_secrets_${var.env}"
@@ -274,44 +272,45 @@ module "carshub_db_credentials" {
 # -----------------------------------------------------------------------------------------
 
 # IAM Role for VPC Flow Logs
-resource "aws_iam_role" "flow_logs_role" {
-  name = "flow-logs-role"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Action = "sts:AssumeRole"
-        Effect = "Allow"
-        Principal = {
-          Service = "vpc-flow-logs.amazonaws.com"
-        }
-      }
-    ]
-  })
-}
-
-# IAM Policy for the Flow Logs Role
-resource "aws_iam_role_policy" "flow_logs_policy" {
-  name = "flow-logs-policy"
-  role = aws_iam_role.flow_logs_role.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect = "Allow"
-        Action = [
-          "logs:CreateLogGroup",
-          "logs:CreateLogStream",
-          "logs:PutLogEvents",
-          "logs:DescribeLogGroups",
-          "logs:DescribeLogStreams"
+module "flow_logs_role" {
+  source             = "../../../modules/iam"
+  role_name          = "flow-logs-role-${var.env}"
+  role_description   = "flow-logs-role-${var.env}"
+  policy_name        = "flow-logs-policy-${var.env}"
+  policy_description = "flow-logs-policy-${var.env}"
+  assume_role_policy = <<EOF
+    {
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Action": "sts:AssumeRole",
+                "Principal": {
+                  "Service": "vpc-flow-logs.amazonaws.com"
+                },
+                "Effect": "Allow",
+                "Sid": ""
+            }
         ]
-        Resource = "*"
-      }
-    ]
-  })
+    }
+    EOF
+  policy             = <<EOF
+    {
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Action": [
+                  "logs:CreateLogGroup",
+                  "logs:CreateLogStream",
+                  "logs:PutLogEvents",
+                  "logs:DescribeLogGroups",
+                  "logs:DescribeLogStreams"
+                ],
+                "Resource": "*",
+                "Effect": "Allow"
+            }
+        ]
+    }
+    EOF
 }
 
 resource "aws_cloudwatch_log_group" "carshub_flow_log_group" {
@@ -321,7 +320,7 @@ resource "aws_cloudwatch_log_group" "carshub_flow_log_group" {
 
 # Add VPC Flow Logs for security monitoring
 resource "aws_flow_log" "carshub_vpc_flow_log" {
-  iam_role_arn    = aws_iam_role.flow_logs_role.arn
+  iam_role_arn    = module.flow_logs_role.arn
   log_destination = aws_cloudwatch_log_group.carshub_flow_log_group.arn
   traffic_type    = "ALL"
   vpc_id          = module.carshub_vpc.vpc_id
@@ -330,14 +329,13 @@ resource "aws_flow_log" "carshub_vpc_flow_log" {
 # -----------------------------------------------------------------------------------------
 # ECR Module
 # -----------------------------------------------------------------------------------------
-
-# 1. Frontend Repo
+# Frontend Repo
 module "carshub_frontend_container_registry" {
   source               = "../../../modules/ecr"
   force_delete         = true
   scan_on_push         = false
   image_tag_mutability = "IMMUTABLE"
-  bash_command         = "bash ${path.cwd}/../../../../src/frontend/artifact_push.sh carshub_frontend_${var.env} ${var.region} http://${module.carshub_backend_lb.lb_dns_name} ${module.carshub_media_cloudfront_distribution.domain_name}"
+  bash_command         = "bash ${path.cwd}/../../../../../src/frontend/artifact_push.sh carshub_frontend_${var.env} ${var.region} http://${module.carshub_backend_lb.lb_dns_name} ${module.carshub_media_cloudfront_distribution.domain_name}"
   name                 = "carshub_frontend_${var.env}"
 }
 
@@ -347,15 +345,14 @@ module "carshub_backend_container_registry" {
   force_delete         = true
   scan_on_push         = false
   image_tag_mutability = "IMMUTABLE"
-  bash_command         = "bash ${path.cwd}/../../../../src/backend/api/artifact_push.sh carshub_backend_${var.env} ${var.region}"
+  bash_command         = "bash ${path.cwd}/../../../../../src/backend/api/artifact_push.sh carshub_backend_${var.env} ${var.region}"
   name                 = "carshub_backend_${var.env}"
 }
 
 # -----------------------------------------------------------------------------------------
 # RDS Instance
 # -----------------------------------------------------------------------------------------
-
-## IAM Role for Enhanced Monitoring
+# IAM Role for Enhanced Monitoring
 resource "aws_iam_role" "rds_monitoring_role" {
   name = "rds-monitoring-role"
 
@@ -385,7 +382,7 @@ module "carshub_db" {
   allocated_storage               = 100
   storage_type                    = "gp3"
   engine                          = "mysql"
-  engine_version                  = "8.0.35"
+  engine_version                  = "8.0.40"
   instance_class                  = "db.r6g.large"
   multi_az                        = true
   username                        = tostring(data.vault_generic_secret.rds.data["username"])
@@ -401,8 +398,8 @@ module "carshub_db" {
   ]
   vpc_security_group_ids                = [module.carshub_rds_sg.id]
   publicly_accessible                   = false
-  deletion_protection                   = true
-  skip_final_snapshot                   = false
+  deletion_protection                   = false
+  skip_final_snapshot                   = true
   max_allocated_storage                 = 500
   performance_insights_enabled          = true
   performance_insights_retention_period = 7
@@ -429,7 +426,6 @@ module "carshub_db" {
 # -----------------------------------------------------------------------------------------
 # S3 Configuration
 # -----------------------------------------------------------------------------------------
-
 module "carshub_media_bucket" {
   source      = "../../../modules/s3"
   bucket_name = "carshubmediabucket${var.env}"
@@ -480,7 +476,7 @@ module "carshub_media_bucket" {
   })
   # Note: Lifecycle policies should be configured in the S3 module
   # or as separate aws_s3_bucket_lifecycle_configuration resources
-  force_destroy = false
+  force_destroy = true
   bucket_notification = {
     queue = [
       {
@@ -498,7 +494,7 @@ module "carshub_media_update_function_code" {
   objects = [
     {
       key    = "lambda.zip"
-      source = "../../files/lambda.zip"
+      source = "../../../files/lambda.zip"
     }
   ]
   bucket_policy = ""
@@ -511,7 +507,7 @@ module "carshub_media_update_function_code" {
     }
   ]
   versioning_enabled = "Enabled"
-  force_destroy      = false
+  force_destroy      = true
 }
 
 # -----------------------------------------------------------------------------------------
@@ -522,7 +518,7 @@ module "carshub_media_update_function_code_signed" {
   source             = "../../../modules/s3"
   bucket_name        = "carshubmediaupdatefunctioncodesigned${var.env}"
   versioning_enabled = "Enabled"
-  force_destroy      = false
+  force_destroy      = true
   bucket_policy      = ""
   cors = [
     {
@@ -551,7 +547,6 @@ module "carshub_signing_profile" {
 # -----------------------------------------------------------------------------------------
 # SQS Config
 # -----------------------------------------------------------------------------------------
-
 resource "aws_lambda_event_source_mapping" "sqs_event_trigger" {
   event_source_arn                   = module.carshub_media_events_queue.arn
   function_name                      = module.carshub_media_update_function.arn
@@ -593,7 +588,6 @@ module "carshub_media_events_queue" {
 # -----------------------------------------------------------------------------------------
 # Lambda Config
 # -----------------------------------------------------------------------------------------
-
 # Lambda IAM  Role
 module "carshub_media_update_function_iam_role" {
   source             = "../../../modules/iam"
@@ -655,7 +649,7 @@ module "carshub_media_update_function_iam_role" {
 
 # Lambda Layer for storing dependencies
 resource "aws_lambda_layer_version" "python_layer" {
-  filename            = "../../files/python.zip"
+  filename            = "../../../files/python.zip"
   layer_name          = "python"
   compatible_runtimes = ["python3.12"]
 }
@@ -683,7 +677,6 @@ module "carshub_media_update_function" {
 # -----------------------------------------------------------------------------------------
 # Cloudfront distribution
 # -----------------------------------------------------------------------------------------
-
 module "carshub_media_cloudfront_distribution" {
   source                                = "../../../modules/cloudfront"
   distribution_name                     = "carshub_media_cdn_${var.env}"
@@ -720,7 +713,6 @@ module "carshub_media_cloudfront_distribution" {
 # -----------------------------------------------------------------------------------------
 # Load Balancer Configuration
 # -----------------------------------------------------------------------------------------
-
 # Frontend Load Balancer
 module "carshub_frontend_lb" {
   source                     = "../../../modules/load-balancer"
@@ -729,7 +721,7 @@ module "carshub_frontend_lb" {
   lb_ip_address_type         = "ipv4"
   load_balancer_type         = "application"
   drop_invalid_header_fields = true
-  enable_deletion_protection = true
+  enable_deletion_protection = false
   security_groups            = [module.carshub_frontend_lb_sg.id]
   subnets                    = module.carshub_public_subnets.subnets[*].id
   target_groups = [
@@ -786,7 +778,7 @@ module "carshub_backend_lb" {
   lb_is_internal             = false
   lb_ip_address_type         = "ipv4"
   load_balancer_type         = "application"
-  enable_deletion_protection = true
+  enable_deletion_protection = false
   drop_invalid_header_fields = true
   security_groups            = [module.carshub_backend_lb_sg.id]
   subnets                    = module.carshub_public_subnets.subnets[*].id
@@ -839,7 +831,6 @@ module "carshub_backend_lb" {
 # -----------------------------------------------------------------------------------------
 # ECS Configuration
 # -----------------------------------------------------------------------------------------
-
 resource "aws_ecs_cluster" "carshub_cluster" {
   name = "carshub_cluster_${var.env}"
   setting {
@@ -989,7 +980,7 @@ module "carshub_frontend_ecs" {
   service_cluster             = aws_ecs_cluster.carshub_cluster.id
   service_launch_type         = "FARGATE"
   service_scheduling_strategy = "REPLICA"
-  service_desired_count       = 1
+  service_desired_count       = 2
 
   deployment_controller_type = "ECS"
   load_balancer_config = [{
@@ -1093,7 +1084,7 @@ module "carshub_backend_ecs" {
   service_cluster             = aws_ecs_cluster.carshub_cluster.id
   service_launch_type         = "FARGATE"
   service_scheduling_strategy = "REPLICA"
-  service_desired_count       = 1
+  service_desired_count       = 2
 
   deployment_controller_type = "ECS"
   load_balancer_config = [{
@@ -1657,7 +1648,7 @@ module "carshub_codebuild_frontend" {
   env_image                     = "aws/codebuild/amazonlinux2-x86_64-standard:5.0"
   env_type                      = "LINUX_CONTAINER"
   fetch_submodules              = true
-  force_destroy_cache_bucket    = false
+  force_destroy_cache_bucket    = true
   image_pull_credentials_type   = "CODEBUILD"
   privileged_mode               = true
   source_location               = "https://github.com/mmdcloud/aws-carshub-rest-ecs.git"
@@ -1693,7 +1684,7 @@ module "carshub_codebuild_backend" {
   env_image                     = "aws/codebuild/amazonlinux2-x86_64-standard:5.0"
   env_type                      = "LINUX_CONTAINER"
   fetch_submodules              = true
-  force_destroy_cache_bucket    = false
+  force_destroy_cache_bucket    = true
   image_pull_credentials_type   = "CODEBUILD"
   privileged_mode               = true
   source_location               = "https://github.com/mmdcloud/aws-carshub-rest-ecs.git"
@@ -1722,7 +1713,7 @@ module "carshub_codebuild_backend" {
 
 resource "aws_s3_bucket" "carshub_frontend_codepipeline_bucket" {
   bucket        = "carshub-frontend-codepipeline-bucket-${var.env}"
-  force_destroy = false
+  force_destroy = true
 }
 
 resource "aws_s3_bucket_public_access_block" "carshub_frontend_codepipeline_bucket_pab" {
@@ -1737,7 +1728,7 @@ resource "aws_s3_bucket_public_access_block" "carshub_frontend_codepipeline_buck
 # CodePipeline backend artifact bucket
 resource "aws_s3_bucket" "carshub_backend_codepipeline_bucket" {
   bucket        = "carshub-backend-codepipeline-bucket-${var.env}"
-  force_destroy = false
+  force_destroy = true
 }
 
 resource "aws_s3_bucket_public_access_block" "carshub_backend_codepipeline_bucket_pab" {
