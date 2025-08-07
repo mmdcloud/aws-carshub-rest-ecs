@@ -338,6 +338,7 @@ resource "aws_flow_log" "carshub_vpc_flow_log" {
 # -----------------------------------------------------------------------------------------
 # ECR Module
 # -----------------------------------------------------------------------------------------
+
 # Frontend Repo
 module "carshub_frontend_container_registry" {
   source               = "../../../modules/ecr"
@@ -597,7 +598,7 @@ module "carshub_media_events_queue" {
 # -----------------------------------------------------------------------------------------
 # Lambda Config
 # -----------------------------------------------------------------------------------------
-# Lambda IAM  Role
+
 module "carshub_media_update_function_iam_role" {
   source             = "../../../modules/iam"
   role_name          = "carshub-media-update-function-iam-role-${var.env}-${var.region}"
@@ -686,6 +687,7 @@ module "carshub_media_update_function" {
 # -----------------------------------------------------------------------------------------
 # Cloudfront distribution
 # -----------------------------------------------------------------------------------------
+
 module "carshub_media_cloudfront_distribution" {
   source                                = "../../../modules/cloudfront"
   distribution_name                     = "carshub-media-cdn-${var.env}-${var.region}"
@@ -1578,70 +1580,76 @@ module "rds_high_connections" {
 # -----------------------------------------------------------------------------------------
 
 # CodeBuild IAM Role
-data "aws_iam_policy_document" "codebuild_assume_role" {
-  statement {
-    effect = "Allow"
-
-    principals {
-      type        = "Service"
-      identifiers = ["codebuild.amazonaws.com"]
+module "carshub_codebuild_iam_role" {
+  source             = "../../../modules/iam"
+  role_name          = "carshub-codebuild-role-${var.env}-${var.region}"
+  role_description   = "carshub-codebuild-role-${var.env}-${var.region}"
+  policy_name        = "carshub-codebuild-policy-${var.env}-${var.region}"
+  policy_description = "carshub-codebuild-policy-${var.env}-${var.region}"
+  assume_role_policy = <<EOF
+    {
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Action": "sts:AssumeRole",
+                "Principal": {
+                  "Service": "codebuild.amazonaws.com"
+                },
+                "Effect": "Allow",
+                "Sid": ""
+            }
+        ]
     }
-
-    actions = ["sts:AssumeRole"]
-  }
-}
-
-resource "aws_iam_role" "carshub_codebuild_iam_role" {
-  name               = "carshub-codebuild-iam-role-${var.env}-${var.region}"
-  assume_role_policy = data.aws_iam_policy_document.codebuild_assume_role.json
-}
-
-data "aws_iam_policy_document" "codebuild_cache_bucket_policy_document" {
-  statement {
-    effect = "Allow"
-
-    actions = [
-      "logs:CreateLogGroup",
-      "logs:CreateLogStream",
-      "logs:PutLogEvents",
-    ]
-
-    resources = ["*"]
-  }
-
-  statement {
-    effect    = "Allow"
-    actions   = ["s3:*"]
-    resources = ["*"]
-  }
-
-  statement {
-    effect    = "Allow"
-    actions   = ["ecr:GetAuthorizationToken"]
-    resources = ["*"]
-  }
-
-  statement {
-    effect = "Allow"
-    actions = [
-      "ecr:BatchGetImage",
-      "ecr:BatchCheckLayerAvailability",
-      "ecr:CompleteLayerUpload",
-      "ecr:DescribeImages",
-      "ecr:DescribeRepositories",
-      "ecr:GetDownloadUrlForLayer",
-      "ecr:InitiateLayerUpload",
-      "ecr:ListImages",
-      "ecr:PutImage",
-      "ecr:UploadLayerPart"
-    ]
-    resources = [module.carshub_frontend_container_registry.arn, module.carshub_backend_container_registry.arn]
-  }
-}
-
-resource "aws_iam_role_policy" "carshub_codebuild_cache_bucket_policy" {
-  role   = aws_iam_role.carshub_codebuild_iam_role.name
-  policy = data.aws_iam_policy_document.codebuild_cache_bucket_policy_document.json
+    EOF
+  policy             = <<EOF
+    {
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Action": [
+                  "logs:CreateLogGroup",
+                  "logs:CreateLogStream",
+                  "logs:PutLogEvents"
+                ],
+                "Resource": "*",
+                "Effect": "Allow"
+            },
+            {
+                "Action": [
+                  "s3:*"
+                ],
+                "Resource": "*",
+                "Effect": "Allow"
+            },
+            {
+                "Action": [
+                  "ecr:GetAuthorizationToken"
+                ],
+                "Resource": "*",
+                "Effect": "Allow"
+            },
+            {
+                "Action": [
+                  "ecr:BatchGetImage",
+                  "ecr:BatchCheckLayerAvailability",
+                  "ecr:CompleteLayerUpload",
+                  "ecr:DescribeImages",
+                  "ecr:DescribeRepositories",
+                  "ecr:GetDownloadUrlForLayer",
+                  "ecr:InitiateLayerUpload",
+                  "ecr:ListImages",
+                  "ecr:PutImage",
+                  "ecr:UploadLayerPart"
+                ],
+                "Resource": [
+                  "${module.carshub_frontend_container_registry.arn},
+                  "${module.carshub_backend_container_registry.arn}"
+                ],
+                "Effect": "Allow"
+            }
+        ]
+    }
+    EOF
 }
 
 module "carshub_codebuild_frontend" {
@@ -1652,7 +1660,7 @@ module "carshub_codebuild_frontend" {
   cloudwatch_stream_name        = "carshub-codebuiild-frontend-stream-${var.env}-${var.region}"
   codebuild_project_description = "carshub-codebuild-frontend-${var.env}-${var.region}"
   codebuild_project_name        = "carshub-codebuild-frontend-${var.env}-${var.region}"
-  role                          = aws_iam_role.carshub_codebuild_iam_role.arn
+  role                          = module.carshub_codebuild_iam_role.arn
   compute_type                  = "BUILD_GENERAL1_SMALL"
   env_image                     = "aws/codebuild/amazonlinux2-x86_64-standard:5.0"
   env_type                      = "LINUX_CONTAINER"
@@ -1688,7 +1696,7 @@ module "carshub_codebuild_backend" {
   cloudwatch_stream_name        = "carshub-codebuiild-backend-stream-${var.env}-${var.region}"
   codebuild_project_description = "carshub-codebuild-backend-${var.env}-${var.region}"
   codebuild_project_name        = "carshub-codebuild-backend-${var.env}-${var.region}"
-  role                          = aws_iam_role.carshub_codebuild_iam_role.arn
+  role                          = module.carshub_codebuild_iam_role.arn
   compute_type                  = "BUILD_GENERAL1_SMALL"
   env_image                     = "aws/codebuild/amazonlinux2-x86_64-standard:5.0"
   env_type                      = "LINUX_CONTAINER"
