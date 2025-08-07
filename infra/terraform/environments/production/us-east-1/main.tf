@@ -863,54 +863,53 @@ module "carshub_backend_ecs_log_group" {
   retention_in_days = 30
 }
 
-data "aws_iam_policy_document" "s3_put_object_policy_document" {
-  statement {
-    effect    = "Allow"
-    actions   = ["s3:PutObject"]
-    resources = ["*"]
-  }
-}
-
-resource "aws_iam_policy" "carshub_ecs_s3_put_policy" {
-  name        = "carshub-ecs-s3-put-policy-${var.env}-${var.region}"
-  description = "Policy for allowing PutObject action"
-  policy      = data.aws_iam_policy_document.s3_put_object_policy_document.json
-}
-
-# ECR-ECS IAM Role
-resource "aws_iam_role" "ecs_task_execution_role" {
-  name               = "carshub-ecs-task-execution-role-${var.env}-${var.region}"
+module "ecs_task_execution_role" {
+  source             = "../../../modules/iam"
+  role_name          = "carshub-ecs-task-execution-role-${var.env}-${var.region}"
+  role_description   = "carshub-ecs-task-execution-role-${var.env}-${var.region}"
+  policy_name        = "carshub-ecs-task-execution-policy-${var.env}-${var.region}"
+  policy_description = "carshub-ecs-task-execution-policy-${var.env}-${var.region}"
   assume_role_policy = <<EOF
     {
-    "Version": "2012-10-17",
-    "Statement": [
-        {
-        "Effect": "Allow",
-        "Principal": {
-            "Service": "ecs-tasks.amazonaws.com"
-        },
-        "Action": "sts:AssumeRole"
-        }
-    ]
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Action": "sts:AssumeRole",
+                "Principal": {
+                  "Service": "ecs-tasks.amazonaws.com"
+                },
+                "Effect": "Allow",
+                "Sid": ""
+            }
+        ]
+    }
+    EOF
+  policy             = <<EOF
+    {
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Action": [
+                  "s3:PutObject"
+                ],
+                "Resource": "*",
+                "Effect": "Allow"
+            }
+        ]
     }
     EOF
 }
 
 # ECR-ECS policy attachment 
 resource "aws_iam_role_policy_attachment" "ecs_task_execution_role_policy_attachment" {
-  role       = aws_iam_role.ecs_task_execution_role.name
+  role       = module.ecs_task_execution_role.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
 # X-Ray tracing
 resource "aws_iam_role_policy_attachment" "ecs_task_xray" {
-  role       = aws_iam_role.ecs_task_execution_role.name
+  role       = module.ecs_task_execution_role.name
   policy_arn = "arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess"
-}
-
-resource "aws_iam_role_policy_attachment" "s3_put_object_role_policy_attachment" {
-  role       = aws_iam_role.ecs_task_execution_role.name
-  policy_arn = aws_iam_policy.carshub_ecs_s3_put_policy.arn
 }
 
 # Frontend ECS Configuration
@@ -920,8 +919,8 @@ module "carshub_frontend_ecs" {
   task_definition_requires_compatibilities = ["FARGATE"]
   task_definition_cpu                      = 2048
   task_definition_memory                   = 4096
-  task_definition_execution_role_arn       = aws_iam_role.ecs_task_execution_role.arn
-  task_definition_task_role_arn            = aws_iam_role.ecs_task_execution_role.arn
+  task_definition_execution_role_arn       = module.ecs_task_execution_role.arn
+  task_definition_task_role_arn            = module.ecs_task_execution_role.arn
   task_definition_network_mode             = "awsvpc"
   task_definition_cpu_architecture         = "X86_64"
   task_definition_operating_system_family  = "LINUX"
@@ -1016,8 +1015,8 @@ module "carshub_backend_ecs" {
   task_definition_requires_compatibilities = ["FARGATE"]
   task_definition_cpu                      = 2048
   task_definition_memory                   = 4096
-  task_definition_execution_role_arn       = aws_iam_role.ecs_task_execution_role.arn
-  task_definition_task_role_arn            = aws_iam_role.ecs_task_execution_role.arn
+  task_definition_execution_role_arn       = module.ecs_task_execution_role.arn
+  task_definition_task_role_arn            = module.ecs_task_execution_role.arn
   task_definition_network_mode             = "awsvpc"
   task_definition_cpu_architecture         = "X86_64"
   task_definition_operating_system_family  = "LINUX"
