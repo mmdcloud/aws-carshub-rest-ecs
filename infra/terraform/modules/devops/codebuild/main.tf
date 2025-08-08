@@ -1,30 +1,22 @@
 # CodeBuild Configuration
-resource "aws_s3_bucket" "codebuild_cache_bucket" {
-  bucket        = var.cache_bucket_name
-  force_destroy = var.force_destroy_cache_bucket
-  tags = {
-    Name = var.cache_bucket_name
-  }
-}
-
 resource "aws_codebuild_project" "codebuild_project" {
   name          = var.codebuild_project_name
   description   = var.codebuild_project_description
   build_timeout = var.build_timeout
-  service_role  = var.role
+  service_role  = var.role  
 
   artifacts {
     type = "NO_ARTIFACTS"
   }
 
   cache {
-    type     = "S3"
-    location = aws_s3_bucket.codebuild_cache_bucket.bucket
+    type     = "S3"    
+    location = var.cache_bucket_name
   }
 
   environment {
     compute_type                = var.compute_type
-    image                       = var.env_image
+    image                       = var.env_image    
     type                        = var.env_type
     image_pull_credentials_type = var.image_pull_credentials_type
     privileged_mode             = var.privileged_mode
@@ -43,7 +35,7 @@ resource "aws_codebuild_project" "codebuild_project" {
     }
     s3_logs {
       status   = "ENABLED"
-      location = "${aws_s3_bucket.codebuild_cache_bucket.id}/build-log"
+      location = "${var.cache_bucket_name}/build-log"
     }
   }
   source {
