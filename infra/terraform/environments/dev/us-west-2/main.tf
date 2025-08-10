@@ -899,6 +899,14 @@ module "ecs_task_execution_role" {
                 ],
                 "Resource": "*",
                 "Effect": "Allow"
+            },
+            {
+              "Effect": "Allow",
+              "Action": [
+                "secretsmanager:GetSecretValue",
+                "secretsmanager:DescribeSecret"
+              ],
+              "Resource": "${module.carshub_db_credentials.arn}"
             }
         ]
     }
