@@ -1033,6 +1033,16 @@ module "carshub_backend_ecs" {
         "cpu" : 1024,
         "memory" : 2048,
         "essential" : true,
+        "secrets": [
+          {
+            "name": "UN",
+            "valueFrom": "${module.carshub_db_credentials.arn}:username::"
+          },
+          {
+            "name": "CREDS",
+            "valueFrom": "${module.carshub_db_credentials.arn}:password::"
+          }
+        ],
         "healthCheck" : {
           "command" : ["CMD-SHELL", "curl -f http://localhost:80 || exit 1"],
           "interval" : 30,
@@ -1066,14 +1076,6 @@ module "carshub_backend_ecs" {
           {
             name  = "DB_PATH"
             value = "${tostring(split(":", module.carshub_db.endpoint)[0])}"
-          },
-          {
-            name  = "UN"
-            value = "${tostring(data.vault_generic_secret.rds.data["username"])}"
-          },
-          {
-            name  = "CREDS"
-            value = "${tostring(data.vault_generic_secret.rds.data["password"])}"
           },
           {
             name  = "DB_NAME"

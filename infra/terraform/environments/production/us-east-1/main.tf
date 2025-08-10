@@ -265,10 +265,11 @@ resource "aws_route_table_association" "carshub_private_rt_association" {
 # -----------------------------------------------------------------------------------------
 # Secrets Manager
 # -----------------------------------------------------------------------------------------
+
 module "carshub_db_credentials" {
   source                  = "../../../modules/secrets-manager"
   name                    = "carshub-rds-secrets-${var.env}-${var.region}"
-  description             = "carshub-rds-secrets-${var.env}-${var.region}"
+  description             = "Secret for storing RDS credentials"
   recovery_window_in_days = 0
   secret_string = jsonencode({
     username = tostring(data.vault_generic_secret.rds.data["username"])
@@ -284,9 +285,9 @@ module "carshub_db_credentials" {
 module "flow_logs_role" {
   source             = "../../../modules/iam"
   role_name          = "carshub-flow-logs-role-${var.env}-${var.region}"
-  role_description   = "carshub-flow-logs-role-${var.env}-${var.region}"
+  role_description   = "IAM role for VPC Flow Logs"
   policy_name        = "carshub-flow-logs-policy-${var.env}-${var.region}"
-  policy_description = "carshub-flow-logs-policy-${var.env}-${var.region}"
+  policy_description = "IAM policy for VPC Flow Logs"
   assume_role_policy = <<EOF
     {
         "Version": "2012-10-17",
@@ -323,7 +324,7 @@ module "flow_logs_role" {
 }
 
 resource "aws_cloudwatch_log_group" "carshub_flow_log_group" {
-  name              = "/carshub/application/${var.env}-${var.region}"
+  name              = "/aws/vpc/carshub-application-${var.env}-${var.region}"
   retention_in_days = 365
 }
 
@@ -362,6 +363,7 @@ module "carshub_backend_container_registry" {
 # -----------------------------------------------------------------------------------------
 # RDS Instance
 # -----------------------------------------------------------------------------------------
+
 # IAM Role for Enhanced Monitoring
 resource "aws_iam_role" "rds_monitoring_role" {
   name = "carshub-rds-monitoring-role-${var.env}-${var.region}"
@@ -436,6 +438,7 @@ module "carshub_db" {
 # -----------------------------------------------------------------------------------------
 # S3 Configuration
 # -----------------------------------------------------------------------------------------
+
 module "carshub_media_bucket" {
   source      = "../../../modules/s3"
   bucket_name = "carshub-media-bucket${var.env}-${var.region}"
@@ -557,6 +560,7 @@ module "carshub_signing_profile" {
 # -----------------------------------------------------------------------------------------
 # SQS Config
 # -----------------------------------------------------------------------------------------
+
 resource "aws_lambda_event_source_mapping" "sqs_event_trigger" {
   event_source_arn                   = module.carshub_media_events_queue.arn
   function_name                      = module.carshub_media_update_function.arn
@@ -602,9 +606,9 @@ module "carshub_media_events_queue" {
 module "carshub_media_update_function_iam_role" {
   source             = "../../../modules/iam"
   role_name          = "carshub-media-update-function-iam-role-${var.env}-${var.region}"
-  role_description   = "carshub-media-update-function-iam-role-${var.env}-${var.region}"
+  role_description   = "IAM role for media metadata update lambda function"
   policy_name        = "carshub-media-update-function-iam-policy-${var.env}-${var.region}"
-  policy_description = "carshub-media-update-function-iam-policy-${var.env}-${var.region}"
+  policy_description = "IAM policy for media metadata update lambda function"
   assume_role_policy = <<EOF
     {
         "Version": "2012-10-17",
@@ -842,6 +846,7 @@ module "carshub_backend_lb" {
 # -----------------------------------------------------------------------------------------
 # ECS Configuration
 # -----------------------------------------------------------------------------------------
+
 resource "aws_ecs_cluster" "carshub_cluster" {
   name = "carshub-cluster-${var.env}-${var.region}"
   setting {
@@ -866,9 +871,9 @@ module "carshub_backend_ecs_log_group" {
 module "ecs_task_execution_role" {
   source             = "../../../modules/iam"
   role_name          = "carshub-ecs-task-execution-role-${var.env}-${var.region}"
-  role_description   = "carshub-ecs-task-execution-role-${var.env}-${var.region}"
+  role_description   = "IAM role for ECS task execution"
   policy_name        = "carshub-ecs-task-execution-policy-${var.env}-${var.region}"
-  policy_description = "carshub-ecs-task-execution-policy-${var.env}-${var.region}"
+  policy_description = "IAM policy for ECS task execution"
   assume_role_policy = <<EOF
     {
         "Version": "2012-10-17",
@@ -1028,6 +1033,16 @@ module "carshub_backend_ecs" {
         "cpu" : 1024,
         "memory" : 2048,
         "essential" : true,
+        "secrets": [
+          {
+            "name": "UN",
+            "valueFrom": "${module.carshub_db_credentials.arn}:username::"
+          },
+          {
+            "name": "CREDS",
+            "valueFrom": "${module.carshub_db_credentials.arn}:password::"
+          }
+        ],
         "healthCheck" : {
           "command" : ["CMD-SHELL", "curl -f http://localhost:80 || exit 1"],
           "interval" : 30,
@@ -1061,14 +1076,6 @@ module "carshub_backend_ecs" {
           {
             name  = "DB_PATH"
             value = "${tostring(split(":", module.carshub_db.endpoint)[0])}"
-          },
-          {
-            name  = "UN"
-            value = "${tostring(data.vault_generic_secret.rds.data["username"])}"
-          },
-          {
-            name  = "CREDS"
-            value = "${tostring(data.vault_generic_secret.rds.data["password"])}"
           },
           {
             name  = "DB_NAME"
@@ -1578,13 +1585,36 @@ module "rds_high_connections" {
 # CodeBuild Configuration
 # -----------------------------------------------------------------------------------------
 
+module "codebuild_cache_bucket" {
+  source        = "../../../modules/s3"
+  bucket_name   = "codebuild_cache_bucket-${var.env}-${var.region}"
+  objects       = []
+  bucket_policy = ""
+  cors = [
+    {
+      allowed_headers = ["*"]
+      allowed_methods = ["GET"]
+      allowed_origins = ["*"]
+      max_age_seconds = 3000
+    },
+    {
+      allowed_headers = ["*"]
+      allowed_methods = ["PUT"]
+      allowed_origins = ["*"]
+      max_age_seconds = 3000
+    }
+  ]
+  versioning_enabled = "Enabled"
+  force_destroy      = true
+}
+
 # CodeBuild IAM Role
 module "carshub_codebuild_iam_role" {
   source             = "../../../modules/iam"
   role_name          = "carshub-codebuild-role-${var.env}-${var.region}"
-  role_description   = "carshub-codebuild-role-${var.env}-${var.region}"
+  role_description   = "IAM role for creating a building and pushing images to ECR for carshub frontend and backend applications"
   policy_name        = "carshub-codebuild-policy-${var.env}-${var.region}"
-  policy_description = "carshub-codebuild-policy-${var.env}-${var.region}"
+  policy_description = "IAM policy for creating a building and pushing images to ECR for carshub frontend and backend applications"
   assume_role_policy = <<EOF
     {
         "Version": "2012-10-17",
@@ -1615,9 +1645,16 @@ module "carshub_codebuild_iam_role" {
             },
             {
                 "Action": [
-                  "s3:*"
+                  "s3:GetObject",
+                  "s3:PutObject",
+                  "s3:GetObjectVersion",
+                  "s3:GetBucketAcl",
+                  "s3:GetBucketLocation"
                 ],
-                "Resource": "*",
+                "Resource": [
+                  "${module.codebuild_cache_bucket.arn}",
+                  "${module.codebuild_cache_bucket.arn}/*"
+                ],
                 "Effect": "Allow"
             },
             {
@@ -1654,8 +1691,8 @@ module "carshub_codebuild_iam_role" {
 module "carshub_codebuild_frontend" {
   source                        = "../../../modules/devops/codebuild"
   build_timeout                 = 60
-  cache_bucket_name             = "carshubcodebuildfrontendcache${var.env}-${var.region}"
-  cloudwatch_group_name         = "carshub-codebuiild-frontend-group-${var.env}-${var.region}"
+  cache_bucket_name             = "${module.codebuild_cache_bucket.bucket}"
+  cloudwatch_group_name         = "/aws/codebuild/carshub-codebuiild-frontend-${var.env}-${var.region}"
   cloudwatch_stream_name        = "carshub-codebuiild-frontend-stream-${var.env}-${var.region}"
   codebuild_project_description = "carshub-codebuild-frontend-${var.env}-${var.region}"
   codebuild_project_name        = "carshub-codebuild-frontend-${var.env}-${var.region}"
@@ -1682,7 +1719,7 @@ module "carshub_codebuild_frontend" {
     },
     {
       name  = "REPO"
-      value = "carshub_frontend_${var.env}"
+      value = "carshub-frontend-${var.env}"
     }
   ]
 }
@@ -1690,8 +1727,8 @@ module "carshub_codebuild_frontend" {
 module "carshub_codebuild_backend" {
   source                        = "../../../modules/devops/codebuild"
   build_timeout                 = 60
-  cache_bucket_name             = "carshubcodebuildbackendcache${var.env}-${var.region}"
-  cloudwatch_group_name         = "carshub-codebuiild-backend-group-${var.env}-${var.region}"
+  cache_bucket_name             = "${module.codebuild_cache_bucket.bucket}"
+  cloudwatch_group_name         = "/aws/codebuild/carshub-codebuiild-backend-${var.env}-${var.region}"
   cloudwatch_stream_name        = "carshub-codebuiild-backend-stream-${var.env}-${var.region}"
   codebuild_project_description = "carshub-codebuild-backend-${var.env}-${var.region}"
   codebuild_project_name        = "carshub-codebuild-backend-${var.env}-${var.region}"
@@ -1718,7 +1755,7 @@ module "carshub_codebuild_backend" {
     },
     {
       name  = "REPO"
-      value = "carshub_backend_${var.env}"
+      value = "carshub-backend-${var.env}"
     }
   ]
 }
@@ -1781,9 +1818,9 @@ resource "aws_codestarconnections_connection" "carshub_codepipeline_codestar_con
 module "carshub_codepipeline_role" {
   source             = "../../../modules/iam"
   role_name          = "carshub-codepipeline-role-${var.env}-${var.region}"
-  role_description   = "carshub-codepipeline-role-${var.env}-${var.region}"
+  role_description   = "IAM role for carshub codepipeline to access S3, CodeDeploy, CodeStar Connections, and CodeBuild"
   policy_name        = "carshub-codepipeline-policy-${var.env}-${var.region}"
-  policy_description = "carshub-codepipeline-policy-${var.env}-${var.region}"
+  policy_description = "IAM policy for carshub codepipeline to access S3, CodeDeploy, CodeStar Connections, and CodeBuild"
   assume_role_policy = <<EOF
     {
         "Version": "2012-10-17",
@@ -1842,7 +1879,10 @@ module "carshub_codepipeline_role" {
                   "codebuild:BatchGetBuilds",
                   "codebuild:StartBuild"
                 ],
-                "Resource": "*",
+                "Resource": [
+                  "${module.carshub_codebuild_frontend.arn}",
+                  "${module.carshub_codebuild_backend.arn}"                
+                ],
                 "Effect": "Allow"
             }
         ]
