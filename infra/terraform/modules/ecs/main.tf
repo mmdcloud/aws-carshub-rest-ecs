@@ -7,7 +7,7 @@ resource "aws_ecs_task_definition" "carshub_task_definition" {
   execution_role_arn       = var.task_definition_execution_role_arn
   task_role_arn            = var.task_definition_task_role_arn
   network_mode             = var.task_definition_network_mode  
-  runtime_platform {
+  runtime_platform {    
     cpu_architecture        = var.task_definition_cpu_architecture
     operating_system_family = var.task_definition_operating_system_family
   }
@@ -41,6 +41,7 @@ resource "aws_ecs_service" "carshub-service" {
       target_group_arn = load_balancer.value["target_group_arn"]
     }
   }
+  
   tags = {
     Name = var.service_name
   }

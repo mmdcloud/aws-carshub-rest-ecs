@@ -324,7 +324,7 @@ module "flow_logs_role" {
 }
 
 resource "aws_cloudwatch_log_group" "carshub_flow_log_group" {
-  name              = "/aws/vpc/carshub-application-${var.env}-${var.region}"
+  name              = "/aws/vpc/flow-logs/carshub-application-${var.env}-${var.region}"
   retention_in_days = 365
 }
 
@@ -944,6 +944,9 @@ module "carshub_frontend_ecs" {
         "image" : "${module.carshub_frontend_container_registry.repository_url}:latest",
         "cpu" : 1024,
         "memory" : 2048,
+        "placementStrategy": [
+          { "type": "spread", "field": "attribute:ecs.availability-zone" } 
+        ]
         "essential" : true,
         "healthCheck" : {
           "command" : ["CMD-SHELL", "curl -f http://localhost:3000/auth/signin || exit 1"],
@@ -1040,6 +1043,9 @@ module "carshub_backend_ecs" {
         "image" : "${module.carshub_backend_container_registry.repository_url}:latest",
         "cpu" : 1024,
         "memory" : 2048,
+        "placementStrategy": [
+          { "type": "spread", "field": "attribute:ecs.availability-zone" } 
+        ]
         "essential" : true,
         "secrets": [
           {
