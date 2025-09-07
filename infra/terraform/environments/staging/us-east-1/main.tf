@@ -944,8 +944,8 @@ module "carshub_frontend_ecs" {
         "image" : "${module.carshub_frontend_container_registry.repository_url}:latest",
         "cpu" : 1024,
         "memory" : 2048,
-        "placementStrategy": [
-          { "type": "spread", "field": "attribute:ecs.availability-zone" } 
+        "placementStrategy" : [
+          { "type" : "spread", "field" : "attribute:ecs.availability-zone" }
         ]
         "essential" : true,
         "healthCheck" : {
@@ -1043,18 +1043,18 @@ module "carshub_backend_ecs" {
         "image" : "${module.carshub_backend_container_registry.repository_url}:latest",
         "cpu" : 1024,
         "memory" : 2048,
-        "placementStrategy": [
-          { "type": "spread", "field": "attribute:ecs.availability-zone" } 
+        "placementStrategy" : [
+          { "type" : "spread", "field" : "attribute:ecs.availability-zone" }
         ]
         "essential" : true,
-        "secrets": [
+        "secrets" : [
           {
-            "name": "UN",
-            "valueFrom": "${module.carshub_db_credentials.arn}:username::"
+            "name" : "UN",
+            "valueFrom" : "${module.carshub_db_credentials.arn}:username::"
           },
           {
-            "name": "CREDS",
-            "valueFrom": "${module.carshub_db_credentials.arn}:password::"
+            "name" : "CREDS",
+            "valueFrom" : "${module.carshub_db_credentials.arn}:password::"
           }
         ],
         "healthCheck" : {
@@ -1705,7 +1705,7 @@ module "carshub_codebuild_iam_role" {
 module "carshub_codebuild_frontend" {
   source                        = "../../../modules/devops/codebuild"
   build_timeout                 = 60
-  cache_bucket_name             = "${module.codebuild_cache_bucket.bucket}"
+  cache_bucket_name             = module.codebuild_cache_bucket.bucket
   cloudwatch_group_name         = "/aws/codebuild/carshub-codebuiild-frontend-${var.env}-${var.region}"
   cloudwatch_stream_name        = "carshub-codebuiild-frontend-stream-${var.env}-${var.region}"
   codebuild_project_description = "carshub-codebuild-frontend-${var.env}-${var.region}"
@@ -1741,7 +1741,7 @@ module "carshub_codebuild_frontend" {
 module "carshub_codebuild_backend" {
   source                        = "../../../modules/devops/codebuild"
   build_timeout                 = 60
-  cache_bucket_name             = "${module.codebuild_cache_bucket.bucket}"
+  cache_bucket_name             = module.codebuild_cache_bucket.bucket
   cloudwatch_group_name         = "/aws/codebuild/carshub-codebuiild-backend-${var.env}-${var.region}"
   cloudwatch_stream_name        = "carshub-codebuiild-backend-stream-${var.env}-${var.region}"
   codebuild_project_description = "carshub-codebuild-backend-${var.env}-${var.region}"
