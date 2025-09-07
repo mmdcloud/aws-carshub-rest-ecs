@@ -1601,7 +1601,7 @@ module "rds_high_connections" {
 
 module "codebuild_cache_bucket" {
   source        = "../../../modules/s3"
-  bucket_name   = "codebuild_cache_bucket-${var.env}-${var.region}"
+  bucket_name   = "codebuild-cache-bucket-${var.env}-${var.region}"
   objects       = []
   bucket_policy = ""
   cors = [
