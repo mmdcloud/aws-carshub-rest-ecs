@@ -1692,7 +1692,7 @@ module "carshub_codebuild_iam_role" {
                   "ecr:UploadLayerPart"
                 ],
                 "Resource": [
-                  "${module.carshub_frontend_container_registry.arn},
+                  "${module.carshub_frontend_container_registry.arn}",
                   "${module.carshub_backend_container_registry.arn}"
                 ],
                 "Effect": "Allow"
@@ -1884,7 +1884,7 @@ module "carshub_codepipeline_role" {
                   "codestar-connections:UseConnection"
                 ],
                 "Resource": [
-                  "${aws_codestarconnections_connection.carshub_codepipeline_codestar_connection.arn}
+                  "${aws_codestarconnections_connection.carshub_codepipeline_codestar_connection.arn}"
                 ],
                 "Effect": "Allow"
             },
