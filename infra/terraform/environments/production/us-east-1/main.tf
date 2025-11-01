@@ -23,7 +23,7 @@ module "carshub_vpc" {
   single_nat_gateway     = false
   one_nat_gateway_per_az = true
   tags = {
-    Environment = "prod"
+    Environment = "${var.env}"
     Project     = "carshub"
   }
 }
@@ -1070,7 +1070,6 @@ module "carshub_backend_app_autoscaling_policy" {
 # -----------------------------------------------------------------------------------------
 # Cloudwath Alarm Configuration
 # -----------------------------------------------------------------------------------------
-
 module "carshub_alarm_notifications" {
   source     = "../../../modules/sns"
   topic_name = "carshub-cloudwatch-alarm-notification-topic-${var.env}-${var.region}"
@@ -1474,7 +1473,6 @@ module "rds_high_connections" {
 # -----------------------------------------------------------------------------------------
 # CodeBuild Configuration
 # -----------------------------------------------------------------------------------------
-
 module "codebuild_cache_bucket" {
   source        = "../../../modules/s3"
   bucket_name   = "codebuild-cache-bucket-${var.env}-${var.region}"
@@ -1653,7 +1651,6 @@ module "carshub_codebuild_backend" {
 # -----------------------------------------------------------------------------------------
 # CodePipeline Configuration
 # -----------------------------------------------------------------------------------------
-
 module "carshub_frontend_codepipeline_bucket" {
   source        = "../../../modules/s3"
   bucket_name   = "carshub-frontend-codepipeline-bucket-${var.env}-${var.region}"
