@@ -238,7 +238,7 @@ resource "aws_cloudwatch_log_group" "carshub_flow_log_group" {
 
 # Add VPC Flow Logs for security monitoring
 resource "aws_flow_log" "carshub_vpc_flow_log" {
-  iam_role_arn    = module.flow_logs_role.arn
+  iam_role_arn    = "${module.flow_logs_role.arn}"
   log_destination = aws_cloudwatch_log_group.carshub_flow_log_group.arn
   traffic_type    = "ALL"
   vpc_id          = module.carshub_vpc.vpc_id

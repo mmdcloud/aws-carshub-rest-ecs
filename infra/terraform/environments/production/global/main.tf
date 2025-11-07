@@ -57,6 +57,29 @@ module "global_accelerator" {
   ]
 }
 
+resource "aws_acm_certificate" "cert" {
+  domain_name       = var.domain_name
+  validation_method = "DNS"
+
+  tags = {
+    Environment = "test"
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+resource "aws_acm_certificate_validation" "primary_validation" {
+  certificate_arn         = aws_acm_certificate.cert.arn
+  validation_record_fqdns = [for record in aws_route53_record.primary : record.fqdn]
+}
+
+resource "aws_acm_certificate_validation" "secondary_validation" {
+  certificate_arn         = aws_acm_certificate.cert.arn
+  validation_record_fqdns = [for record in aws_route53_record.secondary : record.fqdn]
+}
+
 resource "aws_route53_health_check" "primary" {
   fqdn              = aws_lb.primary.dns_name
   port              = 80
@@ -66,13 +89,17 @@ resource "aws_route53_health_check" "primary" {
   request_interval  = 30
 }
 
-resource "aws_route53_record" "primary" {
-  zone_id = aws_route53_zone.main.zone_id
-  name    = "app.example.com"
+resource "aws_route53_zone" "zone" {
+  name = var.domain_name
+}
+
+resource "aws_route53_record" "primary_frontend_us_east_1" {
+  zone_id = aws_route53_zone.zone.id
+  name    = "app.${var.domain_name}"
   type    = "A"
   alias {
-    name                   = aws_lb.primary.dns_name
-    zone_id                = aws_lb.primary.zone_id
+    name                   = data.aws_lb.carshub_frontend_lb_us_east_1.dns_name
+    zone_id                = data.aws_lb.carshub_frontend_lb_us_east_1.zone_id
     evaluate_target_health = true
   }
   set_identifier = "primary"
@@ -82,13 +109,44 @@ resource "aws_route53_record" "primary" {
   health_check_id = aws_route53_health_check.primary.id
 }
 
-resource "aws_route53_record" "secondary" {
-  zone_id = aws_route53_zone.main.zone_id
-  name    = "app.example.com"
+resource "aws_route53_record" "primary_backend_us_east_1" {
+  zone_id = aws_route53_zone.zone.zone_id
+  name    = "app.${var.domain_name}"
   type    = "A"
   alias {
-    name                   = aws_lb.secondary.dns_name
-    zone_id                = aws_lb.secondary.zone_id
+    name                   = data.aws_lb.carshub_backend_lb_us_east_1.dns_name
+    zone_id                = data.aws_lb.carshub_backend_lb_us_east_1.zone_id
+    evaluate_target_health = false
+  }
+  set_identifier = "secondary"
+  failover_routing_policy {
+    type = "SECONDARY"
+  }
+}
+
+resource "aws_route53_record" "secondary_frontend_us_west_2" {
+  zone_id = aws_route53_zone.zone.zone_id
+  name    = "app.${var.domain_name}"
+  type    = "A"
+  alias {
+    name                   = data.aws_lb.carshub_frontend_lb_us_west_2.dns_name
+    zone_id                = data.aws_lb.carshub_frontend_lb_us_west_2.zone_id
+    evaluate_target_health = true
+  }
+  set_identifier = "primary"
+  failover_routing_policy {
+    type = "PRIMARY"
+  }
+  health_check_id = aws_route53_health_check.primary.id
+}
+
+resource "aws_route53_record" "secondary_backend_us_west_2" {
+  zone_id = aws_route53_zone.zone.zone_id
+  name    = "app.${var.domain_name}"
+  type    = "A"
+  alias {
+    name                   = data.aws_lb.carshub_backend_lb_us_west_2.dns_name
+    zone_id                = data.aws_lb.carshub_backend_lb_us_west_2.zone_id
     evaluate_target_health = false
   }
   set_identifier = "secondary"

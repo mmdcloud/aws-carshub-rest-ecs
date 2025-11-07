@@ -13,3 +13,9 @@ variable "us_west_2_lb_arn" {
   type        = string
   description = "ARN of the load balancer in us-west-2"
 }
+
+variable "domain_name" {
+  type        = string
+  description = "Domain name for the application"
+  default     = "carshub.com"  
+}
