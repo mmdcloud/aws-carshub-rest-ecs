@@ -190,8 +190,6 @@ module "carshub_db_credentials" {
 # -----------------------------------------------------------------------------------------
 # VPC Flow Logs
 # -----------------------------------------------------------------------------------------
-
-# IAM Role for VPC Flow Logs
 module "flow_logs_role" {
   source             = "../../../modules/iam"
   role_name          = "carshub-flow-logs-role-${var.env}-${var.region}"
@@ -272,7 +270,6 @@ module "carshub_backend_container_registry" {
 # -----------------------------------------------------------------------------------------
 resource "aws_iam_role" "rds_monitoring_role" {
   name = "carshub-rds-monitoring-role-${var.env}-${var.region}"
-
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
@@ -673,8 +670,8 @@ module "carshub_frontend_lb" {
   source                     = "terraform-aws-modules/alb/aws"
   name                       = "carshub-frontend-lb-${var.env}-${var.region}"
   load_balancer_type         = "application"
-  vpc_id                     = module.vpc.vpc_id
-  subnets                    = module.vpc.public_subnets
+  vpc_id                     = module.carshub_vpc.vpc_id
+  subnets                    = module.carshub_vpc.public_subnets
   enable_deletion_protection = false
   drop_invalid_header_fields = true
   ip_address_type            = "ipv4"
@@ -720,8 +717,8 @@ module "carshub_backend_lb" {
   source                     = "terraform-aws-modules/alb/aws"
   name                       = "carshub-backend-lb-${var.env}-${var.region}"
   load_balancer_type         = "application"
-  vpc_id                     = module.vpc.vpc_id
-  subnets                    = module.vpc.public_subnets
+  vpc_id                     = module.carshub_vpc.vpc_id
+  subnets                    = module.carshub_vpc.public_subnets
   enable_deletion_protection = false
   drop_invalid_header_fields = true
   ip_address_type            = "ipv4"
@@ -883,8 +880,8 @@ module "ecs" {
           container_port   = 3000
         }
       }
-      subnet_ids                    = module.vpc.private_subnets
-      vpc_id                        = module.vpc.vpc_id
+      subnet_ids                    = module.carshub_vpc.private_subnets
+      vpc_id                        = module.carshub_vpc.vpc_id
       availability_zone_rebalancing = "ENABLED"
     }
 
@@ -980,8 +977,8 @@ module "ecs" {
           container_port   = 80
         }
       }
-      subnet_ids                    = module.vpc.private_subnets
-      vpc_id                        = module.vpc.vpc_id
+      subnet_ids                    = module.carshub_vpc.private_subnets
+      vpc_id                        = module.carshub_vpc.vpc_id
       availability_zone_rebalancing = "ENABLED"
     }
   }
