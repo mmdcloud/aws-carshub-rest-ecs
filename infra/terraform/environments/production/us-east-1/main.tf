@@ -763,248 +763,6 @@ module "carshub_backend_lb" {
 # ---------------------------------------------------------------------
 # ECS configuration
 # ---------------------------------------------------------------------
-module "ecs" {
-  source       = "terraform-aws-modules/ecs/aws"
-  cluster_name = "text-to-sql-cluster"
-  default_capacity_provider_strategy = {
-    FARGATE = {
-      weight = 50
-      base   = 20
-    }
-    FARGATE_SPOT = {
-      weight = 50
-    }
-  }
-  autoscaling_capacity_providers = {
-    ASG = {
-      auto_scaling_group_arn         = module.autoscaling.autoscaling_group_arn
-      managed_draining               = "ENABLED"
-      managed_termination_protection = "ENABLED"
-      managed_scaling = {
-        maximum_scaling_step_size = 5
-        minimum_scaling_step_size = 1
-        status                    = "ENABLED"
-        target_capacity           = 60
-      }
-    }
-  }
-
-  services = {
-    ecs-frontend = {
-      cpu    = 1024
-      memory = 4096
-      # Container definition(s)
-      container_definitions = {
-        fluent-bit = {
-          cpu       = 512
-          memory    = 1024
-          essential = true
-          image     = nonsensitive(data.aws_ssm_parameter.fluentbit.value)
-          user      = "0"
-          firelensConfiguration = {
-            type = "fluentbit"
-          }
-          memoryReservation                      = 50
-          cloudwatch_log_group_retention_in_days = 30
-        }
-
-        ecs_frontend = {
-          cpu       = 1024
-          memory    = 2048
-          essential = true
-          image     = "${module.carshub_frontend_container_registry.repository_url}:latest"
-          placementStrategy = [
-            {
-              type  = "spread",
-              field = "attribute:ecs.availability-zone"
-            }
-          ]
-          healthCheck = {
-            command = ["CMD-SHELL", "curl -f http://localhost:3000/auth/signin || exit 1"]
-          }
-          ulimits = [
-            {
-              name      = "nofile"
-              softLimit = 65536
-              hardLimit = 65536
-            }
-          ]
-          portMappings = [
-            {
-              name          = "ecs-frontend"
-              containerPort = 3000
-              hostPort      = 3000
-              protocol      = "tcp"
-            }
-          ]
-          environment = [
-            {
-              name  = "BASE_URL"
-              value = "${module.backend_lb.dns_name}"
-            }
-          ]
-          capacity_provider_strategy = {
-            ASG = {
-              base              = 20
-              capacity_provider = "ASG"
-              weight            = 50
-            }
-          }
-          readonlyRootFilesystem = false
-          dependsOn = [{
-            containerName = "fluent-bit"
-            condition     = "START"
-          }]
-          enable_cloudwatch_logging = false
-          logConfiguration = {
-            logDriver = "awsfirelens"
-            options = {
-              Name                    = "firehose"
-              region                  = var.region
-              delivery_stream         = "carshub-ecs-frontend-stream"
-              log-driver-buffer-limit = "2097152"
-            }
-          }
-          memoryReservation = 100
-          restartPolicy = {
-            enabled              = true
-            ignoredExitCodes     = [1]
-            restartAttemptPeriod = 60
-          }
-        }
-      }
-      load_balancer = {
-        service = {
-          target_group_arn = module.carshub_frontend_lb.target_groups["carshub_frontend_lb_target_group"].arn
-          container_name   = "ecs-frontend"
-          container_port   = 3000
-        }
-      }
-      subnet_ids                    = module.carshub_vpc.private_subnets
-      vpc_id                        = module.carshub_vpc.vpc_id
-      availability_zone_rebalancing = "ENABLED"
-    }
-
-    ecs-backend = {
-      cpu    = 1024
-      memory = 4096
-      container_definitions = {
-        fluent-bit = {
-          cpu       = 512
-          memory    = 1024
-          essential = true
-          image     = nonsensitive(data.aws_ssm_parameter.fluentbit.value)
-          user      = "0"
-          firelensConfiguration = {
-            type = "fluentbit"
-          }
-          memoryReservation                      = 50
-          cloudwatch_log_group_retention_in_days = 30
-        }
-        ecs_backend = {
-          cpu       = 1024
-          memory    = 2048
-          essential = true
-          image     = "${module.carshub_backend_container_registry.repository_url}:latest"
-          placementStrategy = [
-            {
-              type  = "spread",
-              field = "attribute:ecs.availability-zone"
-            }
-          ]
-          healthCheck = {
-            command = ["CMD-SHELL", "curl -f http://localhost:80 || exit 1"]
-          }
-          ulimits = [
-            {
-              name      = "nofile"
-              softLimit = 65536
-              hardLimit = 65536
-            }
-          ]
-          environment = [
-            {
-              name  = "DB_PATH"
-              value = "${tostring(split(":", module.db.endpoint)[0])}"
-            },
-            {
-              name  = "DB_NAME"
-              value = "${module.db.name}"
-            }
-          ]
-          portMappings = [
-            {
-              name          = "ecs-backend"
-              containerPort = 80
-              hostPort      = 80
-              protocol      = "tcp"
-            }
-          ]
-          capacity_provider_strategy = {
-            ASG = {
-              base              = 20
-              capacity_provider = "ASG"
-              weight            = 50
-            }
-          }
-          readOnlyRootFilesystem = false
-          dependsOn = [{
-            containerName = "fluent-bit"
-            condition     = "START"
-          }]
-          enable_cloudwatch_logging = false
-          logConfiguration = {
-            logDriver = "awsfirelens"
-            options = {
-              Name                    = "firehose"
-              region                  = var.region
-              delivery_stream         = "carshub-ecs-backend-stream"
-              log-driver-buffer-limit = "2097152"
-            }
-          }
-          memoryReservation = 100
-          restartPolicy = {
-            enabled              = true
-            ignoredExitCodes     = [1]
-            restartAttemptPeriod = 60
-          }
-        }
-      }
-      load_balancer = {
-        service = {
-          target_group_arn = module.carshub_backend_lb.target_groups["carshub_backend_lb_target_group"].arn
-          container_name   = "ecs-backend"
-          container_port   = 80
-        }
-      }
-      subnet_ids                    = module.carshub_vpc.private_subnets
-      vpc_id                        = module.carshub_vpc.vpc_id
-      availability_zone_rebalancing = "ENABLED"
-    }
-  }
-}
-
-resource "aws_ecs_cluster" "carshub_cluster" {
-  name = "carshub-cluster-${var.env}-${var.region}"
-  setting {
-    name  = "containerInsights"
-    value = "enabled"
-  }
-}
-
-# Cloudwatch log groups for ecs service logs
-module "carshub_frontend_ecs_log_group" {
-  source            = "../../../modules/cloudwatch/cloudwatch-log-group"
-  log_group_name    = "/ecs/carshub-frontend-${var.env}-${var.region}"
-  retention_in_days = 30
-}
-
-module "carshub_backend_ecs_log_group" {
-  source            = "../../../modules/cloudwatch/cloudwatch-log-group"
-  log_group_name    = "/ecs/carshub-backend-${var.env}-${var.region}"
-  retention_in_days = 30
-}
-
 module "ecs_task_execution_role" {
   source             = "../../../modules/iam"
   role_name          = "carshub-ecs-task-execution-role-${var.env}-${var.region}"
@@ -1062,206 +820,218 @@ resource "aws_iam_role_policy_attachment" "ecs_task_xray" {
   policy_arn = "arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess"
 }
 
-# Frontend ECS Configuration
-module "carshub_frontend_ecs" {
-  source                                   = "../../../modules/ecs"
-  task_definition_family                   = "carshub-frontend-task-definition-${var.env}-${var.region}"
-  task_definition_requires_compatibilities = ["FARGATE"]
-  task_definition_cpu                      = 2048
-  task_definition_memory                   = 4096
-  task_definition_execution_role_arn       = module.ecs_task_execution_role.arn
-  task_definition_task_role_arn            = module.ecs_task_execution_role.arn
-  task_definition_network_mode             = "awsvpc"
-  task_definition_cpu_architecture         = "X86_64"
-  task_definition_operating_system_family  = "LINUX"
-  task_definition_container_definitions = jsonencode(
-    [
-      {
-        "name" : "carshub-frontend-${var.env}-${var.region}",
-        "image" : "${module.carshub_frontend_container_registry.repository_url}:latest",
-        "cpu" : 1024,
-        "memory" : 2048,
-        "placementStrategy" : [
-          { "type" : "spread", "field" : "attribute:ecs.availability-zone" }
-        ]
-        "essential" : true,
-        "healthCheck" : {
-          "command" : ["CMD-SHELL", "curl -f http://localhost:3000/auth/signin || exit 1"],
-          "interval" : 30,
-          "timeout" : 5,
-          "retries" : 3,
-          "startPeriod" : 60
-        },
-        "ulimits" : [
-          {
-            "name" : "nofile",
-            "softLimit" : 65536,
-            "hardLimit" : 65536
-          }
-        ]
-        "portMappings" : [
-          {
-            "containerPort" : 3000,
-            "hostPort" : 3000,
-            "name" : "carshub-frontend-${var.env}-${var.region}"
-          }
-        ],
-        "logConfiguration" : {
-          "logDriver" : "awslogs",
-          "options" : {
-            "awslogs-group" : "${module.carshub_frontend_ecs_log_group.name}",
-            "awslogs-region" : "${var.region}",
-            "awslogs-stream-prefix" : "ecs"
-          }
-        },
-        environment = [
-          {
-            name  = "BASE_URL"
-            value = "${module.carshub_backend_lb.lb_dns_name}"
-          },
-          {
-            name  = "CDN_URL"
-            value = "${module.carshub_media_cloudfront_distribution.domain_name}"
-          }
-        ]
-      },
-      {
-        "name" : "xray-daemon",
-        "image" : "amazon/aws-xray-daemon",
-        "cpu" : 32,
-        "memoryReservation" : 256,
-        "portMappings" : [
-          {
-            "containerPort" : 2000,
-            "protocol" : "udp"
-          }
-        ]
-      },
-  ])
-
-  service_name                = "carshub-frontend-ecs-service-${var.env}-${var.region}"
-  service_cluster             = aws_ecs_cluster.carshub_cluster.id
-  service_launch_type         = "FARGATE"
-  service_scheduling_strategy = "REPLICA"
-  service_desired_count       = 2
-
-  deployment_controller_type = "ECS"
-  load_balancer_config = [{
-    container_name   = "carshub-frontend-${var.env}-${var.region}"
-    container_port   = 3000
-    target_group_arn = module.carshub_frontend_lb.target_groups[0].arn
-  }]
-
-  security_groups  = [module.carshub_ecs_frontend_sg.id]
-  subnets          = module.carshub_vpc.private_subnets
-  assign_public_ip = false
-}
-
-# Backend ECS Configuration
-module "carshub_backend_ecs" {
-  source                                   = "../../../modules/ecs"
-  task_definition_family                   = "carshub-backend-task-definition-${var.env}-${var.region}"
-  task_definition_requires_compatibilities = ["FARGATE"]
-  task_definition_cpu                      = 2048
-  task_definition_memory                   = 4096
-  task_definition_execution_role_arn       = module.ecs_task_execution_role.arn
-  task_definition_task_role_arn            = module.ecs_task_execution_role.arn
-  task_definition_network_mode             = "awsvpc"
-  task_definition_cpu_architecture         = "X86_64"
-  task_definition_operating_system_family  = "LINUX"
-  task_definition_container_definitions = jsonencode(
-    [
-      {
-        "name" : "carshub-backend-${var.env}-${var.region}",
-        "image" : "${module.carshub_backend_container_registry.repository_url}:latest",
-        "cpu" : 1024,
-        "memory" : 2048,
-        "placementStrategy" : [
-          { "type" : "spread", "field" : "attribute:ecs.availability-zone" }
-        ]
-        "essential" : true,
-        "secrets" : [
-          {
-            "name" : "UN",
-            "valueFrom" : "${module.carshub_db_credentials.arn}:username::"
-          },
-          {
-            "name" : "CREDS",
-            "valueFrom" : "${module.carshub_db_credentials.arn}:password::"
-          }
-        ],
-        "healthCheck" : {
-          "command" : ["CMD-SHELL", "curl -f http://localhost:80 || exit 1"],
-          "interval" : 30,
-          "timeout" : 5,
-          "retries" : 3,
-          "startPeriod" : 60
-        },
-        "ulimits" : [
-          {
-            "name" : "nofile",
-            "softLimit" : 65536,
-            "hardLimit" : 65536
-          }
-        ]
-        "portMappings" : [
-          {
-            "containerPort" : 80,
-            "hostPort" : 80,
-            "name" : "carshub-backend-${var.env}-${var.region}"
-          }
-        ],
-        "logConfiguration" : {
-          "logDriver" : "awslogs",
-          "options" : {
-            "awslogs-group" : "${module.carshub_backend_ecs_log_group.name}",
-            "awslogs-region" : "${var.region}",
-            "awslogs-stream-prefix" : "ecs"
-          }
-        },
-        environment = [
-          {
-            name  = "DB_PATH"
-            value = "${tostring(split(":", module.carshub_db.endpoint)[0])}"
-          },
-          {
-            name  = "DB_NAME"
-            value = "${module.carshub_db.name}"
-          }
-        ]
-      },
-      {
-        "name" : "xray-daemon",
-        "image" : "amazon/aws-xray-daemon",
-        "cpu" : 32,
-        "memoryReservation" : 256,
-        "portMappings" : [
-          {
-            "containerPort" : 2000,
-            "protocol" : "udp"
-          }
-        ]
+module "ecs" {
+  source       = "terraform-aws-modules/ecs/aws"
+  cluster_name = "text-to-sql-cluster"
+  services = {
+    ecs-frontend = {
+      cpu    = 2048
+      memory = 4096
+      task_exec_iam_role_arn = module.ecs_task_execution_role.arn
+      iam_role_arn = module.ecs_task_execution_role.arn
+      desired_count = 2
+      launch_type   = "FARGATE"
+      assign_public_ip = false
+      deployment_controller = {
+        type = "ECS"
       }
-  ])
+      network_mode = "aws_vpc"
+      runtime_platform = {
+        cpu_architecture        = "X86_64"
+        operating_system_family = "LINUX"
+      }
+      launch_type         = "FARGATE"
+      scheduling_strategy = "REPLICA"
+      requires_compatibilities = ["FARGATE"]
+      container_definitions = {
+        fluent-bit = {          
+          cpu   = 512
+          memory = 1024          
+          essential = true
+          image     = nonsensitive(data.aws_ssm_parameter.fluentbit.value)
+          user      = "0"
+          firelensConfiguration = {
+            type = "fluentbit"
+          }
+          memoryReservation                      = 50
+          cloudwatch_log_group_retention_in_days = 30
+        }
+        ecs_frontend = {
+          cpu       = 1024
+          memory    = 2048
+          essential = true
+          image     = "${module.carshub_frontend_container_registry.repository_url}:latest"
+          placementStrategy = [
+            {
+              type  = "spread",
+              field = "attribute:ecs.availability-zone"
+            }
+          ]
+          healthCheck = {
+            command = ["CMD-SHELL", "curl -f http://localhost:3000/auth/signin || exit 1"]
+          }
+          ulimits = [
+            {
+              name      = "nofile"
+              softLimit = 65536
+              hardLimit = 65536
+            }
+          ]
+          portMappings = [
+            {
+              name          = "ecs-frontend"
+              containerPort = 3000
+              hostPort      = 3000
+              protocol      = "tcp"
+            }
+          ]
+          environment = [
+            {
+              name  = "BASE_URL"
+              value = "${module.backend_lb.dns_name}"
+            }
+          ]
+          readonlyRootFilesystem = false
+          dependsOn = [{
+            containerName = "fluent-bit"
+            condition     = "START"
+          }]
+          # enable_cloudwatch_logging = false
+          logConfiguration = {
+            logDriver = "awsfirelens"
+            options = {
+              Name                    = "firehose"
+              region                  = var.region
+              delivery_stream         = "carshub-ecs-frontend-stream"
+              log-driver-buffer-limit = "2097152"
+            }
+          }
+          memoryReservation = 100
+          restartPolicy = {
+            enabled              = true
+            ignoredExitCodes     = [1]
+            restartAttemptPeriod = 60
+          }
+        }
+      }
+      load_balancer = {
+        service = {
+          target_group_arn = module.carshub_frontend_lb.target_groups["carshub_frontend_lb_target_group"].arn
+          container_name   = "ecs-frontend"
+          container_port   = 3000
+        }
+      }
+      subnet_ids                    = module.carshub_vpc.private_subnets
+      vpc_id                        = module.carshub_vpc.vpc_id
+      availability_zone_rebalancing = "ENABLED"
+    }
 
-  service_name                = "carshub-backend-ecs-service-${var.env}-${var.region}"
-  service_cluster             = aws_ecs_cluster.carshub_cluster.id
-  service_launch_type         = "FARGATE"
-  service_scheduling_strategy = "REPLICA"
-  service_desired_count       = 2
-
-  deployment_controller_type = "ECS"
-  load_balancer_config = [{
-    container_name   = "carshub-backend-${var.env}-${var.region}"
-    container_port   = 80
-    target_group_arn = module.carshub_backend_lb.target_groups[0].arn
-  }]
-
-  security_groups  = [module.carshub_ecs_backend_sg.id]
-  subnets          = module.carshub_vpc.private_subnets
-  assign_public_ip = false
+    ecs-backend = {
+      cpu    = 2048
+      memory = 4096
+      task_exec_iam_role_arn = module.ecs_task_execution_role.arn
+      iam_role_arn = module.ecs_task_execution_role.arn
+      desired_count = 2
+      launch_type   = "FARGATE"
+      assign_public_ip = false
+      deployment_controller = {
+        type = "ECS"
+      }
+      network_mode = "aws_vpc"
+      runtime_platform = {
+        cpu_architecture        = "X86_64"
+        operating_system_family = "LINUX"
+      }
+      launch_type         = "FARGATE"
+      scheduling_strategy = "REPLICA"
+      requires_compatibilities = ["FARGATE"]
+      container_definitions = {
+        fluent-bit = {
+          cpu       = 512
+          memory    = 1024
+          essential = true
+          image     = nonsensitive(data.aws_ssm_parameter.fluentbit.value)
+          user      = "0"
+          firelensConfiguration = {
+            type = "fluentbit"
+          }
+          memoryReservation                      = 50
+          cloudwatch_log_group_retention_in_days = 30
+        }
+        ecs_backend = {
+          cpu       = 1024
+          memory    = 2048
+          essential = true
+          image     = "${module.carshub_backend_container_registry.repository_url}:latest"
+          placementStrategy = [
+            {
+              type  = "spread",
+              field = "attribute:ecs.availability-zone"
+            }
+          ]
+          healthCheck = {
+            command = ["CMD-SHELL", "curl -f http://localhost:80 || exit 1"]
+          }
+          ulimits = [
+            {
+              name      = "nofile"
+              softLimit = 65536
+              hardLimit = 65536
+            }
+          ]
+          environment = [
+            {
+              name  = "DB_PATH"
+              value = "${tostring(split(":", module.db.endpoint)[0])}"
+            },
+            {
+              name  = "DB_NAME"
+              value = "${module.db.name}"
+            }
+          ]
+          portMappings = [
+            {
+              name          = "ecs-backend"
+              containerPort = 80
+              hostPort      = 80
+              protocol      = "tcp"
+            }
+          ]
+          readOnlyRootFilesystem = false
+          dependsOn = [{
+            containerName = "fluent-bit"
+            condition     = "START"
+          }]
+          logConfiguration = {
+            logDriver = "awsfirelens"
+            options = {
+              Name                    = "firehose"
+              region                  = var.region
+              delivery_stream         = "carshub-ecs-backend-stream"
+              log-driver-buffer-limit = "2097152"
+            }
+          }
+          memoryReservation = 100
+          restartPolicy = {
+            enabled              = true
+            ignoredExitCodes     = [1]
+            restartAttemptPeriod = 60
+          }
+        }
+      }
+      load_balancer = {
+        service = {
+          target_group_arn = module.carshub_backend_lb.target_groups["carshub_backend_lb_target_group"].arn
+          container_name   = "ecs-backend"
+          container_port   = 80
+        }
+      }
+      subnet_ids                    = module.carshub_vpc.private_subnets
+      vpc_id                        = module.carshub_vpc.vpc_id
+      availability_zone_rebalancing = "ENABLED"
+    }
+  }
 }
-
 
 # Module for App Autoscaling Policy
 module "carshub_frontend_app_autoscaling_policy" {
