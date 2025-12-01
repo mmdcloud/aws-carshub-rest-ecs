@@ -841,7 +841,7 @@ module "carshub_cluster" {
       deployment_controller = {
         type = "ECS"
       }
-      network_mode = "aws_vpc"
+      network_mode = "awsvpc"
       runtime_platform = {
         cpu_architecture        = "X86_64"
         operating_system_family = "LINUX"
@@ -943,7 +943,7 @@ module "carshub_cluster" {
       deployment_controller = {
         type = "ECS"
       }
-      network_mode = "aws_vpc"
+      network_mode = "awsvpc"
       runtime_platform = {
         cpu_architecture        = "X86_64"
         operating_system_family = "LINUX"
@@ -1044,7 +1044,7 @@ module "carshub_frontend_app_autoscaling_policy" {
   source                    = "../../../modules/autoscaling"
   min_capacity              = 2
   max_capacity              = 10
-  target_resource_id        = "service/${module.carshub_cluster.cluster_name}/${module.carshub_cluster.services[0].name}"
+  target_resource_id        = "service/${module.carshub_cluster.cluster_name}/${module.carshub_cluster.services["ecs-frontend"].name}"
   target_scalable_dimension = "ecs:service:DesiredCount"
   target_service_namespace  = "ecs"
   policies = [
@@ -1072,7 +1072,7 @@ module "carshub_backend_app_autoscaling_policy" {
   source                    = "../../../modules/autoscaling"
   min_capacity              = 2
   max_capacity              = 10
-  target_resource_id        = "service/${module.carshub_cluster.cluster_name}/${module.carshub_cluster.services[0].name}"
+  target_resource_id        = "service/${module.carshub_cluster.cluster_name}/${module.carshub_cluster.services["ecs-frontend"].name}"
   target_scalable_dimension = "ecs:service:DesiredCount"
   target_service_namespace  = "ecs"
   policies = [
@@ -1113,7 +1113,7 @@ module "carshub_alarm_notifications" {
 # CPU Utilization Alarm
 module "carshub_frontend_ecs_service_high_cpu" {
   source              = "../../../modules/cloudwatch/cloudwatch-alarm"
-  alarm_name          = "${module.carshub_cluster.cluster_name}-${module.carshub_cluster.services[0].name}-high-cpu-utilization-${var.env}-${var.region}"
+  alarm_name          = "${module.carshub_cluster.cluster_name}-${module.carshub_cluster.services["ecs-frontend"].name}-high-cpu-utilization-${var.env}-${var.region}"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = "2"
   metric_name         = "CPUUtilization"
@@ -1127,14 +1127,14 @@ module "carshub_frontend_ecs_service_high_cpu" {
 
   dimensions = {
     ClusterName = module.carshub_cluster.cluster_name
-    ServiceName = module.carshub_cluster.services[0].name
+    ServiceName = module.carshub_cluster.services["ecs-frontend"].name
   }
 }
 
 # Memory Utilization Alarm
 module "carshub_frontend_ecs_service_high_memory" {
   source              = "../../../modules/cloudwatch/cloudwatch-alarm"
-  alarm_name          = "${module.carshub_cluster.cluster_name}-${module.carshub_cluster.services[0].name}-high-memory-utilization-${var.env}-${var.region}"
+  alarm_name          = "${module.carshub_cluster.cluster_name}-${module.carshub_cluster.services["ecs-frontend"].name}-high-memory-utilization-${var.env}-${var.region}"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = "2"
   metric_name         = "MemoryUtilization"
@@ -1148,14 +1148,14 @@ module "carshub_frontend_ecs_service_high_memory" {
 
   dimensions = {
     ClusterName = module.carshub_cluster.cluster_name
-    ServiceName = module.carshub_cluster.services[0].name
+    ServiceName = module.carshub_cluster.services["ecs-frontend"].name
   }
 }
 
 # Service Running Tasks Alarm - alerts if there are fewer than expected tasks
 module "carshub_frontend_ecs_service_running_tasks" {
   source              = "../../../modules/cloudwatch/cloudwatch-alarm"
-  alarm_name          = "${module.carshub_cluster.cluster_name}-${module.carshub_cluster.services[0].name}-low-running-tasks-${var.env}-${var.region}"
+  alarm_name          = "${module.carshub_cluster.cluster_name}-${module.carshub_cluster.services["ecs-frontend"].name}-low-running-tasks-${var.env}-${var.region}"
   comparison_operator = "LessThanThreshold"
   evaluation_periods  = "1"
   metric_name         = "RunningTaskCount"
@@ -1169,14 +1169,14 @@ module "carshub_frontend_ecs_service_running_tasks" {
 
   dimensions = {
     ClusterName = module.carshub_cluster.cluster_name
-    ServiceName = module.carshub_cluster.services[0].name
+    ServiceName = module.carshub_cluster.services["ecs-frontend"].name
   }
 }
 
 # Service Failed Deployment Alarm
 module "carshub_frontend_ecs_failed_deployments" {
   source              = "../../../modules/cloudwatch/cloudwatch-alarm"
-  alarm_name          = "${module.carshub_cluster.cluster_name}-${module.carshub_cluster.services[0].name}-failed-deployments-${var.env}-${var.region}"
+  alarm_name          = "${module.carshub_cluster.cluster_name}-${module.carshub_cluster.services["ecs-frontend"].name}-failed-deployments-${var.env}-${var.region}"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = "1"
   metric_name         = "DeploymentFailures"
@@ -1190,14 +1190,14 @@ module "carshub_frontend_ecs_failed_deployments" {
 
   dimensions = {
     ClusterName = module.carshub_cluster.cluster_name
-    ServiceName = module.carshub_cluster.services[0].name
+    ServiceName = module.carshub_cluster.services["ecs-frontend"].name
   }
 }
 
 # Target Response Time Alarm (if using ALB)
 module "carshub_frontend_ecs_alb_high_response_time" {
   source              = "../../../modules/cloudwatch/cloudwatch-alarm"
-  alarm_name          = "${module.carshub_cluster.cluster_name}-${module.carshub_cluster.services[0].name}-high-response-time-${var.env}-${var.region}"
+  alarm_name          = "${module.carshub_cluster.cluster_name}-${module.carshub_cluster.services["ecs-frontend"].name}-high-response-time-${var.env}-${var.region}"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = "3"
   metric_name         = "TargetResponseTime"
@@ -1217,7 +1217,7 @@ module "carshub_frontend_ecs_alb_high_response_time" {
 # HTTP 5XX Error Rate Alarm (if using ALB)
 module "carshub_frontend_lb_high_5xx_errors" {
   source              = "../../../modules/cloudwatch/cloudwatch-alarm"
-  alarm_name          = "${module.carshub_cluster.cluster_name}-${module.carshub_cluster.services[0].name}-high-5xx-errors-${var.env}-${var.region}"
+  alarm_name          = "${module.carshub_cluster.cluster_name}-${module.carshub_cluster.services["ecs-frontend"].name}-high-5xx-errors-${var.env}-${var.region}"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = "1"
   metric_name         = "HTTPCode_Target_5XX_Count"
@@ -1228,9 +1228,8 @@ module "carshub_frontend_lb_high_5xx_errors" {
   alarm_description   = "This metric monitors number of 5XX errors"
   alarm_actions       = [module.carshub_alarm_notifications.topic_arn]
   ok_actions          = [module.carshub_alarm_notifications.topic_arn]
-
   dimensions = {
-    TargetGroup  = module.carshub_frontend_lb.target_groups[0].arn
+    TargetGroup  = module.carshub_frontend_lb.target_groups["carshub_frontend_lb_target_group"].arn
     LoadBalancer = "${module.carshub_frontend_lb.arn}"
   }
 }
@@ -1238,7 +1237,7 @@ module "carshub_frontend_lb_high_5xx_errors" {
 # ECS Task Restart Count - alerts on excessive task restarts which might indicate instability
 module "carshub_frontend_ecs_task_restarts" {
   source              = "../../../modules/cloudwatch/cloudwatch-alarm"
-  alarm_name          = "${module.carshub_cluster.cluster_name}-${module.carshub_cluster.services[0].name}-high-task-restarts-${var.env}-${var.region}"
+  alarm_name          = "${module.carshub_cluster.cluster_name}-${module.carshub_cluster.services["ecs-frontend"].name}-high-task-restarts-${var.env}-${var.region}"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = "1"
   metric_name         = "TaskRestartCount"
@@ -1252,7 +1251,7 @@ module "carshub_frontend_ecs_task_restarts" {
 
   dimensions = {
     ClusterName = module.carshub_cluster.cluster_name
-    ServiceName = module.carshub_cluster.services[0].name
+    ServiceName = module.carshub_cluster.services["ecs-frontend"].name
   }
 }
 
@@ -1261,7 +1260,7 @@ module "carshub_frontend_ecs_task_restarts" {
 # CPU Utilization Alarm
 module "carshub_backend_ecs_service_high_cpu" {
   source              = "../../../modules/cloudwatch/cloudwatch-alarm"
-  alarm_name          = "${module.carshub_cluster.cluster_name}-${module.carshub_cluster.services[1].name}-high-cpu-utilization-${var.env}-${var.region}"
+  alarm_name          = "${module.carshub_cluster.cluster_name}-${module.carshub_cluster.services["ecs-backend"].name}-high-cpu-utilization-${var.env}-${var.region}"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = "2"
   metric_name         = "CPUUtilization"
@@ -1275,7 +1274,7 @@ module "carshub_backend_ecs_service_high_cpu" {
 
   dimensions = {
     ClusterName = module.carshub_cluster.cluster_name
-    ServiceName = module.carshub_cluster.services[1].name
+    ServiceName = module.carshub_cluster.services["ecs-backend"].name
   }
 
 }
@@ -1283,7 +1282,7 @@ module "carshub_backend_ecs_service_high_cpu" {
 # Memory Utilization Alarm
 module "carshub_backend_ecs_service_high_memory" {
   source              = "../../../modules/cloudwatch/cloudwatch-alarm"
-  alarm_name          = "${module.carshub_cluster.cluster_name}-${module.carshub_cluster.services[1].name}-high-memory-utilization-${var.env}-${var.region}"
+  alarm_name          = "${module.carshub_cluster.cluster_name}-${module.carshub_cluster.services["ecs-backend"].name}-high-memory-utilization-${var.env}-${var.region}"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = "2"
   metric_name         = "MemoryUtilization"
@@ -1297,14 +1296,14 @@ module "carshub_backend_ecs_service_high_memory" {
 
   dimensions = {
     ClusterName = module.carshub_cluster.cluster_name
-    ServiceName = module.carshub_cluster.services[1].name
+    ServiceName = module.carshub_cluster.services["ecs-backend"].name
   }
 }
 
 # Service Running Tasks Alarm - alerts if there are fewer than expected tasks
 module "carshub_backend_ecs_service_running_tasks" {
   source              = "../../../modules/cloudwatch/cloudwatch-alarm"
-  alarm_name          = "${module.carshub_cluster.cluster_name}-${module.carshub_cluster.services[1].name}-low-running-tasks-${var.env}-${var.region}"
+  alarm_name          = "${module.carshub_cluster.cluster_name}-${module.carshub_cluster.services["ecs-backend"].name}-low-running-tasks-${var.env}-${var.region}"
   comparison_operator = "LessThanThreshold"
   evaluation_periods  = "1"
   metric_name         = "RunningTaskCount"
@@ -1318,14 +1317,14 @@ module "carshub_backend_ecs_service_running_tasks" {
 
   dimensions = {
     ClusterName = module.carshub_cluster.cluster_name
-    ServiceName = module.carshub_cluster.services[1].name
+    ServiceName = module.carshub_cluster.services["ecs-backend"].name
   }
 }
 
 # Service Failed Deployment Alarm
 module "carshub_backend_ecs_failed_deployments" {
   source              = "../../../modules/cloudwatch/cloudwatch-alarm"
-  alarm_name          = "${module.carshub_cluster.cluster_name}-${module.carshub_cluster.services[1].name}-failed-deployments-${var.env}-${var.region}"
+  alarm_name          = "${module.carshub_cluster.cluster_name}-${module.carshub_cluster.services["ecs-backend"].name}-failed-deployments-${var.env}-${var.region}"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = "1"
   metric_name         = "DeploymentFailures"
@@ -1339,14 +1338,14 @@ module "carshub_backend_ecs_failed_deployments" {
 
   dimensions = {
     ClusterName = module.carshub_cluster.cluster_name
-    ServiceName = module.carshub_cluster.services[1].name
+    ServiceName = module.carshub_cluster.services["ecs-backend"].name
   }
 }
 
 # Target Response Time Alarm (if using ALB)
 module "carshub_backend_lb_high_response_time" {
   source              = "../../../modules/cloudwatch/cloudwatch-alarm"
-  alarm_name          = "${module.carshub_cluster.cluster_name}-${module.carshub_cluster.services[1].name}-high-response-time-${var.env}-${var.region}"
+  alarm_name          = "${module.carshub_cluster.cluster_name}-${module.carshub_cluster.services["ecs-backend"].name}-high-response-time-${var.env}-${var.region}"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = "3"
   metric_name         = "TargetResponseTime"
@@ -1360,7 +1359,7 @@ module "carshub_backend_lb_high_response_time" {
   ok_actions          = [module.carshub_alarm_notifications.topic_arn]
 
   dimensions = {
-    TargetGroup  = module.carshub_backend_lb.target_groups[0].arn
+    TargetGroup  = module.carshub_backend_lb.target_groups["carshub_backend_lb_target_group"].arn
     LoadBalancer = "${module.carshub_backend_lb.arn}"
   }
 }
@@ -1368,7 +1367,7 @@ module "carshub_backend_lb_high_response_time" {
 # HTTP 5XX Error Rate Alarm (if using ALB)
 module "carshub_backend_lb_high_5xx_errors" {
   source              = "../../../modules/cloudwatch/cloudwatch-alarm"
-  alarm_name          = "${module.carshub_cluster.cluster_name}-${module.carshub_cluster.services[1].name}-high-5xx-errors-${var.env}-${var.region}"
+  alarm_name          = "${module.carshub_cluster.cluster_name}-${module.carshub_cluster.services["ecs-backend"].name}-high-5xx-errors-${var.env}-${var.region}"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = "1"
   metric_name         = "HTTPCode_Target_5XX_Count"
@@ -1381,7 +1380,7 @@ module "carshub_backend_lb_high_5xx_errors" {
   ok_actions          = [module.carshub_alarm_notifications.topic_arn]
 
   dimensions = {
-    TargetGroup  = module.carshub_backend_lb.target_groups[0].arn
+    TargetGroup  = module.carshub_backend_lb.target_groups["carshub_backend_lb_target_group"].arn
     LoadBalancer = "${module.carshub_backend_lb.arn}"
   }
 }
@@ -1389,7 +1388,7 @@ module "carshub_backend_lb_high_5xx_errors" {
 # ECS Task Restart Count - alerts on excessive task restarts which might indicate instability
 module "carshub_backend_ecs_task_restarts" {
   source              = "../../../modules/cloudwatch/cloudwatch-alarm"
-  alarm_name          = "${module.carshub_cluster.cluster_name}-${module.carshub_cluster.services[1].name}-high-task-restarts-${var.env}-${var.region}"
+  alarm_name          = "${module.carshub_cluster.cluster_name}-${module.carshub_cluster.services["ecs-backend"].name}-high-task-restarts-${var.env}-${var.region}"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = "1"
   metric_name         = "TaskRestartCount"
@@ -1403,7 +1402,7 @@ module "carshub_backend_ecs_task_restarts" {
 
   dimensions = {
     ClusterName = module.carshub_cluster.cluster_name
-    ServiceName = module.carshub_cluster.services[1].name
+    ServiceName = module.carshub_cluster.services["ecs-backend"].name
   }
 }
 
@@ -1892,7 +1891,7 @@ module "carshub_frontend_codepipeline" {
           output_artifacts = []
           configuration = {
             ClusterName = "${module.carshub_cluster.cluster_name}"
-            ServiceName = "${module.carshub_cluster.services[0].name}"
+            ServiceName = "${module.carshub_cluster.services["ecs-frontend"].name}"
             FileName    = "imagedefinitions.json"
           }
         }
@@ -1982,7 +1981,7 @@ module "carshub_backend_codepipeline" {
           output_artifacts = []
           configuration = {
             ClusterName = "${module.carshub_cluster.cluster_name}"
-            ServiceName = "${module.carshub_cluster.services[1].name}"
+            ServiceName = "${module.carshub_cluster.services["ecs-backend"].name}"
             FileName    = "imagedefinitions.json"
           }
         }
