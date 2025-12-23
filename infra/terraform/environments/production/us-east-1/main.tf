@@ -253,15 +253,16 @@ module "flow_logs_role" {
     EOF
 }
 
-resource "aws_cloudwatch_log_group" "carshub_flow_log_group" {
-  name              = "/aws/vpc/flow-logs/carshub-application-${var.env}-${var.region}"
+module "carshub_flow_log_group" {
+  source            = "../../../modules/cloudwatch/cloudwatch-log-group"
+  log_group_name    = "/aws/vpc/flow-logs/carshub-application-${var.env}-${var.region}"
   retention_in_days = 365
 }
 
 # Add VPC Flow Logs for security monitoring
 resource "aws_flow_log" "carshub_vpc_flow_log" {
   iam_role_arn    = module.flow_logs_role.arn
-  log_destination = aws_cloudwatch_log_group.carshub_flow_log_group.arn
+  log_destination = module.carshub_flow_log_group.arn
   traffic_type    = "ALL"
   vpc_id          = module.carshub_vpc.vpc_id
 }
@@ -689,10 +690,10 @@ module "carshub_media_cloudfront_distribution" {
 # Load Balancer Configuration
 # -----------------------------------------------------------------------------------------
 module "carshub_frontend_lb" {
-  source             = "terraform-aws-modules/alb/aws"
-  name               = "frontend-lb-${var.env}-${var.region}"
-  load_balancer_type = "application"
-  # vpc_id                     = module.carshub_vpc.vpc_id
+  source                     = "terraform-aws-modules/alb/aws"
+  name                       = "frontend-lb-${var.env}-${var.region}"
+  load_balancer_type         = "application"
+  vpc_id                     = module.carshub_vpc.vpc_id
   subnets                    = module.carshub_vpc.public_subnets
   enable_deletion_protection = false
   drop_invalid_header_fields = true
@@ -733,6 +734,7 @@ module "carshub_frontend_lb" {
   }
   tags = {
     Project = "carshub"
+    Environment = var.env
   }
   depends_on = [module.carshub_vpc]
 }
@@ -782,6 +784,7 @@ module "carshub_backend_lb" {
   }
   tags = {
     Project = "carshub"
+    Environment = var.env
   }
   depends_on = [module.carshub_vpc]
 }
@@ -856,7 +859,6 @@ module "carshub_cluster" {
       task_exec_iam_role_arn = module.ecs_task_execution_role.arn
       iam_role_arn           = module.ecs_task_execution_role.arn
       desired_count          = 2
-      launch_type            = "FARGATE"
       assign_public_ip       = false
       deployment_controller = {
         type = "ECS"
@@ -949,6 +951,7 @@ module "carshub_cluster" {
       }
       subnet_ids                    = module.carshub_vpc.private_subnets
       vpc_id                        = module.carshub_vpc.vpc_id
+      security_group_ids            = [module.carshub_ecs_frontend_sg.id]
       availability_zone_rebalancing = "ENABLED"
     }
 
@@ -958,7 +961,6 @@ module "carshub_cluster" {
       task_exec_iam_role_arn = module.ecs_task_execution_role.arn
       iam_role_arn           = module.ecs_task_execution_role.arn
       desired_count          = 2
-      launch_type            = "FARGATE"
       assign_public_ip       = false
       deployment_controller = {
         type = "ECS"
@@ -1054,6 +1056,7 @@ module "carshub_cluster" {
       }
       subnet_ids                    = module.carshub_vpc.private_subnets
       vpc_id                        = module.carshub_vpc.vpc_id
+      security_group_ids            = [module.carshub_ecs_backend_sg.id]
       availability_zone_rebalancing = "ENABLED"
     }
   }
