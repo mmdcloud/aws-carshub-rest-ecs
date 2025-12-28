@@ -4,6 +4,7 @@ module "vpc" {
   name                    = var.vpc_name
   cidr                    = var.vpc_cidr
   azs                     = var.azs
+  database_subnets        = var.database_subnets
   public_subnets          = var.public_subnets
   private_subnets         = var.private_subnets
   enable_dns_hostnames    = var.enable_dns_hostnames

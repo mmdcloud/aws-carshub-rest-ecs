@@ -2,9 +2,9 @@
 resource "aws_appautoscaling_target" "target" {
   max_capacity       = var.max_capacity
   min_capacity       = var.min_capacity
-  resource_id        = var.target_resource_id
-  scalable_dimension = var.target_scalable_dimension
-  service_namespace  = var.target_service_namespace
+  resource_id        = var.resource_id
+  scalable_dimension = var.scalable_dimension
+  service_namespace  = var.service_namespace
 }
 
 # App Auto Scaling Policy

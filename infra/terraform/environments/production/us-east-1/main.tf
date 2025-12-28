@@ -25,6 +25,7 @@ module "carshub_vpc" {
   azs                     = var.azs
   public_subnets          = var.public_subnets
   private_subnets         = var.private_subnets
+  database_subnets        = var.database_subnets
   enable_dns_hostnames    = true
   enable_dns_support      = true
   create_igw              = true
@@ -71,6 +72,7 @@ module "carshub_frontend_lb_sg" {
     }
   ]
   tags = {
+    Environment = "${var.env}"
     Name = "carshub-frontend-lb-sg-${var.env}-${var.region}"
   }
 }
@@ -107,6 +109,7 @@ module "carshub_backend_lb_sg" {
     }
   ]
   tags = {
+    Environment = "${var.env}"
     Name = "carshub-backend-lb-sg-${var.env}-${var.region}"
   }
 }
@@ -135,6 +138,7 @@ module "carshub_ecs_frontend_sg" {
     }
   ]
   tags = {
+    Environment = "${var.env}"
     Name = "carshub-ecs-frontend-sg-${var.env}-${var.region}"
   }
 }
@@ -163,6 +167,7 @@ module "carshub_ecs_backend_sg" {
     }
   ]
   tags = {
+    Environment = "${var.env}"
     Name = "carshub-ecs-backend-sg-${var.env}-${var.region}"
   }
 }
@@ -191,6 +196,7 @@ module "carshub_rds_sg" {
     }
   ]
   tags = {
+    Environment = "${var.env}"
     Name = "carshub-rds-sg-${var.env}-${var.region}"
   }
 }
@@ -327,7 +333,7 @@ module "carshub_db" {
   enabled_cloudwatch_logs_exports       = ["audit", "error", "general", "slowquery"]
   backup_retention_period               = 35
   backup_window                         = "03:00-06:00"
-  subnet_group_ids                      = module.carshub_vpc.private_subnets
+  subnet_group_ids                      = module.carshub_vpc.database_subnets
   vpc_security_group_ids                = [module.carshub_rds_sg.id]
   publicly_accessible                   = false
   deletion_protection                   = false
@@ -733,7 +739,7 @@ module "carshub_frontend_lb" {
     }
   }
   tags = {
-    Project = "carshub"
+    Project     = "carshub"
     Environment = var.env
   }
   depends_on = [module.carshub_vpc]
@@ -783,7 +789,7 @@ module "carshub_backend_lb" {
     }
   }
   tags = {
-    Project = "carshub"
+    Project     = "carshub"
     Environment = var.env
   }
   depends_on = [module.carshub_vpc]
@@ -1064,12 +1070,12 @@ module "carshub_cluster" {
 
 # Module for App Autoscaling Policy
 module "carshub_frontend_app_autoscaling_policy" {
-  source                    = "../../../modules/autoscaling"
-  min_capacity              = 2
-  max_capacity              = 10
-  target_resource_id        = "service/${module.carshub_cluster.cluster_name}/${module.carshub_cluster.services["ecs-frontend"].name}"
-  target_scalable_dimension = "ecs:service:DesiredCount"
-  target_service_namespace  = "ecs"
+  source             = "../../../modules/autoscaling"
+  min_capacity       = 2
+  max_capacity       = 10
+  resource_id        = "service/${module.carshub_cluster.cluster_name}/${module.carshub_cluster.services["ecs-frontend"].name}"
+  scalable_dimension = "ecs:service:DesiredCount"
+  service_namespace  = "ecs"
   policies = [
     {
       name                    = "carshub-frontend-autoscaling-policy-${var.env}-${var.region}"
@@ -1092,30 +1098,35 @@ module "carshub_frontend_app_autoscaling_policy" {
 }
 
 module "carshub_backend_app_autoscaling_policy" {
-  source                    = "../../../modules/autoscaling"
-  min_capacity              = 2
-  max_capacity              = 10
-  target_resource_id        = "service/${module.carshub_cluster.cluster_name}/${module.carshub_cluster.services["ecs-frontend"].name}"
-  target_scalable_dimension = "ecs:service:DesiredCount"
-  target_service_namespace  = "ecs"
+  source             = "../../../modules/autoscaling"
+  min_capacity       = 2
+  max_capacity       = 10
+  resource_id        = "service/${module.carshub_cluster.cluster_name}/${module.carshub_cluster.services["ecs-backend"].name}"
+  scalable_dimension = "ecs:service:DesiredCount"
+  service_namespace  = "ecs"
   policies = [
     {
-      name                    = "carshub-backend-autoscaling-policy-${var.env}-${var.region}"
-      adjustment_type         = "ChangeInCapacity"
-      cooldown                = 60
-      metric_aggregation_type = "Average"
-      steps = [
-        {
-          metric_interval_lower_bound = 0
-          metric_interval_upper_bound = 20
-          scaling_adjustment          = 1
-        },
-        {
-          metric_interval_lower_bound = 20
-          scaling_adjustment          = 2
-        }
-      ]
+      name        = "worker-scale-up"
+      policy_type = "TargetTrackingScaling"
+
     }
+    # {
+    #   name                    = "carshub-backend-autoscaling-policy-${var.env}-${var.region}"
+    #   adjustment_type         = "ChangeInCapacity"
+    #   cooldown                = 60
+    #   metric_aggregation_type = "Average"
+    #   steps = [
+    #     {
+    #       metric_interval_lower_bound = 0
+    #       metric_interval_upper_bound = 20
+    #       scaling_adjustment          = 1
+    #     },
+    #     {
+    #       metric_interval_lower_bound = 20
+    #       scaling_adjustment          = 2
+    #     }
+    #   ]
+    # }
   ]
 }
 
