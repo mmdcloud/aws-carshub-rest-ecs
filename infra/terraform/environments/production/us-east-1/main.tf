@@ -11,10 +11,6 @@ data "aws_ssm_parameter" "ecs_optimized_ami" {
   name = "/aws/service/ecs/optimized-ami/amazon-linux-2023/recommended"
 }
 
-data "aws_ssm_parameter" "fluentbit" {
-  name = "/aws/service/aws-for-fluent-bit/stable"
-}
-
 # -----------------------------------------------------------------------------------------
 # VPC Configuration
 # -----------------------------------------------------------------------------------------
@@ -880,6 +876,18 @@ resource "aws_iam_role_policy_attachment" "ecs_task_xray" {
   policy_arn = "arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess"
 }
 
+module "carshub_frontend_ecs_log_group" {
+  source            = "../../../modules/cloudwatch/cloudwatch-log-group"
+  log_group_name    = "/aws/ecs/carshub-frontend-ecs-${var.env}-${var.region}"
+  retention_in_days = 90
+}
+
+module "carshub_backend_ecs_log_group" {
+  source            = "../../../modules/cloudwatch/cloudwatch-log-group"
+  log_group_name    = "/aws/ecs/carshub-backend-ecs-${var.env}-${var.region}"
+  retention_in_days = 90
+}
+
 module "carshub_cluster" {
   source       = "terraform-aws-modules/ecs/aws"
   cluster_name = "carshub-ecs-cluster"
@@ -902,19 +910,7 @@ module "carshub_cluster" {
       launch_type              = "FARGATE"
       scheduling_strategy      = "REPLICA"
       requires_compatibilities = ["FARGATE"]
-      container_definitions = {
-        fluent-bit = {
-          cpu       = 512
-          memory    = 1024
-          essential = true
-          image     = nonsensitive(data.aws_ssm_parameter.fluentbit.value)
-          user      = "0"
-          firelensConfiguration = {
-            type = "fluentbit"
-          }
-          memoryReservation                      = 50
-          cloudwatch_log_group_retention_in_days = 30
-        }
+      container_definitions = {        
         ecs_frontend = {
           cpu       = 1024
           memory    = 2048
@@ -950,20 +946,15 @@ module "carshub_cluster" {
               value = "${module.carshub_backend_lb.dns_name}"
             }
           ]
-          readonlyRootFilesystem = false
-          dependsOn = [{
-            containerName = "fluent-bit"
-            condition     = "START"
-          }]
-          # enable_cloudwatch_logging = false
+          readonlyRootFilesystem = false     
           logConfiguration = {
-            logDriver = "awsfirelens"
+            logConfiguration = {
+            logDriver = "awslogs"
             options = {
-              Name                    = "firehose"
-              region                  = var.region
-              delivery_stream         = "carshub-ecs-frontend-stream"
-              log-driver-buffer-limit = "2097152"
+              awslogs-group         = module.carshub_frontend_ecs_log_group.name
+              awslogs-region        = var.region
             }
+          }
           }
           memoryReservation = 100
           restartPolicy = {
@@ -1004,19 +995,7 @@ module "carshub_cluster" {
       launch_type              = "FARGATE"
       scheduling_strategy      = "REPLICA"
       requires_compatibilities = ["FARGATE"]
-      container_definitions = {
-        fluent-bit = {
-          cpu       = 512
-          memory    = 1024
-          essential = true
-          image     = nonsensitive(data.aws_ssm_parameter.fluentbit.value)
-          user      = "0"
-          firelensConfiguration = {
-            type = "fluentbit"
-          }
-          memoryReservation                      = 50
-          cloudwatch_log_group_retention_in_days = 30
-        }
+      container_definitions = {        
         ecs_backend = {
           cpu       = 1024
           memory    = 2048
@@ -1056,18 +1035,12 @@ module "carshub_cluster" {
               protocol      = "tcp"
             }
           ]
-          readOnlyRootFilesystem = false
-          dependsOn = [{
-            containerName = "fluent-bit"
-            condition     = "START"
-          }]
+          readOnlyRootFilesystem = false          
           logConfiguration = {
-            logDriver = "awsfirelens"
+            logDriver = "awslogs"
             options = {
-              Name                    = "firehose"
-              region                  = var.region
-              delivery_stream         = "carshub-ecs-backend-stream"
-              log-driver-buffer-limit = "2097152"
+              awslogs-group         = module.carshub_backend_ecs_log_group.name
+              awslogs-region        = var.region
             }
           }
           memoryReservation = 100
