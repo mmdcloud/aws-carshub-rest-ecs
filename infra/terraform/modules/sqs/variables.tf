@@ -8,3 +8,7 @@ variable "maxReceiveCount" {}
 variable "policy" {}
 variable "dlq_name" {}
 variable "dlq_message_retention_seconds" {}
+variable "tags" {
+  type = map(string)
+  default = {}  
+}

@@ -3,9 +3,12 @@ resource "aws_secretsmanager_secret" "secret" {
   name                    = var.name
   recovery_window_in_days = var.recovery_window_in_days
   description             = var.description
-  tags = {
-    Name = var.name
-  }
+  tags = merge(
+    {
+      Name = var.name
+    },
+    var.tags
+  )
 }
 
 resource "aws_secretsmanager_secret_version" "secret_version" {

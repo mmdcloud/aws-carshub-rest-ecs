@@ -46,7 +46,10 @@ resource "aws_cloudfront_distribution" "distribution" {
     cloudfront_default_certificate = var.cloudfront_default_certificate
   }
   price_class = var.price_class
-  tags = {
-    Name = var.distribution_name
-  }
+  tags = merge(
+    {
+      Name = var.distribution_name
+    },
+    var.tags
+  )
 }

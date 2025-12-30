@@ -21,3 +21,7 @@ variable "permissions" {
     source_arn = string
   }))
 }
+variable "tags" {
+  type = map(string)
+  default = {}    
+}

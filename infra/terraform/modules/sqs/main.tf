@@ -12,6 +12,12 @@ resource "aws_sqs_queue" "queue" {
     deadLetterTargetArn = aws_sqs_queue.dlq.arn
     maxReceiveCount     = var.maxReceiveCount
   })
+  tags = merge(
+    {
+      Name = var.queue_name
+    },
+    var.tags
+  )
 }
 
 # Dead Letter Queue for failed messages

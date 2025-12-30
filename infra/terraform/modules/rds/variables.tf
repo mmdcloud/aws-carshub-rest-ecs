@@ -34,3 +34,7 @@ variable "enabled_cloudwatch_logs_exports" {
 variable "monitoring_role_arn" {
   type = string
 }
+variable "tags" {
+  type = map(string)
+  default = {}    
+}

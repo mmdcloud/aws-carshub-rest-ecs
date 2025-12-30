@@ -73,7 +73,6 @@ module "carshub_frontend_lb_sg" {
   ]
   tags = {
     Environment = "${var.env}"
-    Name = "carshub-frontend-lb-sg-${var.env}-${var.region}"
   }
 }
 
@@ -110,7 +109,6 @@ module "carshub_backend_lb_sg" {
   ]
   tags = {
     Environment = "${var.env}"
-    Name = "carshub-backend-lb-sg-${var.env}-${var.region}"
   }
 }
 
@@ -139,7 +137,6 @@ module "carshub_ecs_frontend_sg" {
   ]
   tags = {
     Environment = "${var.env}"
-    Name = "carshub-ecs-frontend-sg-${var.env}-${var.region}"
   }
 }
 
@@ -168,7 +165,6 @@ module "carshub_ecs_backend_sg" {
   ]
   tags = {
     Environment = "${var.env}"
-    Name = "carshub-ecs-backend-sg-${var.env}-${var.region}"
   }
 }
 
@@ -197,7 +193,6 @@ module "carshub_rds_sg" {
   ]
   tags = {
     Environment = "${var.env}"
-    Name = "carshub-rds-sg-${var.env}-${var.region}"
   }
 }
 
@@ -213,6 +208,9 @@ module "carshub_db_credentials" {
     username = tostring(data.vault_generic_secret.rds.data["username"])
     password = tostring(data.vault_generic_secret.rds.data["password"])
   })
+  tags = {
+    Environment = "${var.env}"
+  }
 }
 
 # -----------------------------------------------------------------------------------------
@@ -359,6 +357,9 @@ module "carshub_db" {
       value = "1"
     }
   ]
+  tags = {
+    Environment = "${var.env}"
+  }
 }
 
 # -----------------------------------------------------------------------------------------
@@ -424,6 +425,9 @@ module "carshub_media_bucket" {
     ]
     lambda_function = []
   }
+  tags = {
+    Environment = "${var.env}"
+  }
 }
 
 module "carshub_media_update_function_code" {
@@ -446,6 +450,9 @@ module "carshub_media_update_function_code" {
   ]
   versioning_enabled = "Enabled"
   force_destroy      = true
+  tags = {
+    Environment = "${var.env}"
+  }
 }
 
 module "carshub_frontend_lb_logs" {
@@ -469,6 +476,9 @@ module "carshub_frontend_lb_logs" {
   ]
   versioning_enabled = "Enabled"
   force_destroy      = true
+  tags = {
+    Environment = "${var.env}"
+  }
 }
 
 module "carshub_backend_lb_logs" {
@@ -492,6 +502,9 @@ module "carshub_backend_lb_logs" {
   ]
   versioning_enabled = "Enabled"
   force_destroy      = true
+  tags = {
+    Environment = "${var.env}"
+  }
 }
 
 # -----------------------------------------------------------------------------------------
@@ -511,6 +524,9 @@ module "carshub_media_update_function_code_signed" {
       max_age_seconds = 3000
     }
   ]
+  tags = {
+    Environment = "${var.env}"
+  }
 }
 
 # Signing profile
@@ -566,6 +582,9 @@ module "carshub_media_events_queue" {
       }
     ]
   })
+  tags = {
+    Environment = "${var.env}"
+  }
 }
 
 # -----------------------------------------------------------------------------------------
@@ -654,6 +673,9 @@ module "carshub_media_update_function" {
   s3_key                  = "lambda.zip"
   layers                  = [aws_lambda_layer_version.python_layer.arn]
   code_signing_config_arn = module.carshub_signing_profile.config_arn
+  tags = {
+    Environment = "${var.env}"
+  }
 }
 
 # -----------------------------------------------------------------------------------------
@@ -690,6 +712,9 @@ module "carshub_media_cloudfront_distribution" {
   cloudfront_default_certificate = true
   geo_restriction_type           = "none"
   query_string                   = true
+  tags = {
+    Environment = "${var.env}"
+  }
 }
 
 # -----------------------------------------------------------------------------------------
@@ -1078,21 +1103,25 @@ module "carshub_frontend_app_autoscaling_policy" {
   service_namespace  = "ecs"
   policies = [
     {
-      name                    = "carshub-frontend-autoscaling-policy-${var.env}-${var.region}"
-      adjustment_type         = "ChangeInCapacity"
-      cooldown                = 60
-      metric_aggregation_type = "Average"
-      steps = [
-        {
-          metric_interval_lower_bound = 0
-          metric_interval_upper_bound = 20
-          scaling_adjustment          = 1
-        },
-        {
-          metric_interval_lower_bound = 20
-          scaling_adjustment          = 2
-        }
-      ]
+      name        = "worker-scale-up"
+      policy_type = "TargetTrackingScaling"
+      step_scaling_policy_configuration = {
+        adjustment_type          = "ChangeInCapacity"
+        cooldown                 = 60
+        metric_aggregation_type  = "Average"
+        min_adjustment_magnitude = 1
+        step_adjustment = [
+          {
+            metric_interval_lower_bound = 0
+            metric_interval_upper_bound = 20
+            scaling_adjustment          = 1
+          },
+          {
+            metric_interval_lower_bound = 20
+            scaling_adjustment          = 2
+          }
+        ]
+      }
     }
   ]
 }
@@ -1108,25 +1137,24 @@ module "carshub_backend_app_autoscaling_policy" {
     {
       name        = "worker-scale-up"
       policy_type = "TargetTrackingScaling"
-
+      step_scaling_policy_configuration = {
+        adjustment_type          = "ChangeInCapacity"
+        cooldown                 = 60
+        metric_aggregation_type  = "Average"
+        min_adjustment_magnitude = 1
+        step_adjustment = [
+          {
+            metric_interval_lower_bound = 0
+            metric_interval_upper_bound = 20
+            scaling_adjustment          = 1
+          },
+          {
+            metric_interval_lower_bound = 20
+            scaling_adjustment          = 2
+          }
+        ]
+      }
     }
-    # {
-    #   name                    = "carshub-backend-autoscaling-policy-${var.env}-${var.region}"
-    #   adjustment_type         = "ChangeInCapacity"
-    #   cooldown                = 60
-    #   metric_aggregation_type = "Average"
-    #   steps = [
-    #     {
-    #       metric_interval_lower_bound = 0
-    #       metric_interval_upper_bound = 20
-    #       scaling_adjustment          = 1
-    #     },
-    #     {
-    #       metric_interval_lower_bound = 20
-    #       scaling_adjustment          = 2
-    #     }
-    #   ]
-    # }
   ]
 }
 

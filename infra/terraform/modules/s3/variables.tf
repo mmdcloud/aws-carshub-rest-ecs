@@ -49,6 +49,10 @@ variable "ignore_public_acls" {
 variable "restrict_public_buckets" {
   default = false
 }
+variable "tags" {
+  type = map(string)
+  default = {}    
+}
 # variable "lifecycle_policies" {
 #   type = list(object({
 #     id     = string
