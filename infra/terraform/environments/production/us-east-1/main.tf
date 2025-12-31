@@ -409,8 +409,6 @@ module "carshub_media_bucket" {
       }
     ]
   })
-  # Note: Lifecycle policies should be configured in the S3 module
-  # or as separate aws_s3_bucket_lifecycle_configuration resources
   force_destroy = true
   bucket_notification = {
     queue = [

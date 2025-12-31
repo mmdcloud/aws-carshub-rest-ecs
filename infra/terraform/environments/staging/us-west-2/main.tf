@@ -25,6 +25,7 @@ module "carshub_vpc" {
   azs                     = var.azs
   public_subnets          = var.public_subnets
   private_subnets         = var.private_subnets
+  database_subnets = var.database_subnets
   enable_dns_hostnames    = true
   enable_dns_support      = true
   create_igw              = true
@@ -1064,9 +1065,9 @@ module "carshub_frontend_app_autoscaling_policy" {
   source                    = "../../../modules/autoscaling"
   min_capacity              = 2
   max_capacity              = 10
-  target_resource_id        = "service/${module.carshub_cluster.cluster_name}/${module.carshub_cluster.services["ecs-frontend"].name}"
-  target_scalable_dimension = "ecs:service:DesiredCount"
-  target_service_namespace  = "ecs"
+  resource_id        = "service/${module.carshub_cluster.cluster_name}/${module.carshub_cluster.services["ecs-frontend"].name}"
+  scalable_dimension = "ecs:service:DesiredCount"
+  service_namespace  = "ecs"
   policies = [
     {
       name                    = "carshub-frontend-autoscaling-policy-${var.env}-${var.region}"
@@ -1092,9 +1093,9 @@ module "carshub_backend_app_autoscaling_policy" {
   source                    = "../../../modules/autoscaling"
   min_capacity              = 2
   max_capacity              = 10
-  target_resource_id        = "service/${module.carshub_cluster.cluster_name}/${module.carshub_cluster.services["ecs-frontend"].name}"
-  target_scalable_dimension = "ecs:service:DesiredCount"
-  target_service_namespace  = "ecs"
+  resource_id        = "service/${module.carshub_cluster.cluster_name}/${module.carshub_cluster.services["ecs-frontend"].name}"
+  scalable_dimension = "ecs:service:DesiredCount"
+  service_namespace  = "ecs"
   policies = [
     {
       name                    = "carshub-backend-autoscaling-policy-${var.env}-${var.region}"
