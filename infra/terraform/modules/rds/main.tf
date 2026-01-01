@@ -1,11 +1,19 @@
 resource "aws_db_instance" "db" {
   allocated_storage                     = var.allocated_storage
   db_name                               = var.db_name
+  identifier                            = var.identifier
+  iops                                  = var.iops
+  storage_throughput                    = var.storage_throughput
+  auto_minor_version_upgrade            = var.auto_minor_version_upgrade
+  iam_database_authentication_enabled   = var.iam_database_authentication_enabled
+  copy_tags_to_snapshot                 = var.copy_tags_to_snapshot
+  final_snapshot_identifier             = var.final_snapshot_identifier
+  maintenance_window                    = var.maintenance_window
   engine                                = var.engine
   engine_version                        = var.engine_version
   publicly_accessible                   = var.publicly_accessible
   multi_az                              = var.multi_az
-  instance_class                        = var.instance_class  
+  instance_class                        = var.instance_class
   username                              = var.username
   storage_type                          = var.storage_type
   password                              = var.password

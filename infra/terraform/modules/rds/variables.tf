@@ -1,6 +1,14 @@
 variable "allocated_storage" {}
 variable "db_name" {}
 variable "engine" {}
+variable "identifier"{}
+variable "iops"{}
+variable "storage_throughput"{}
+variable "auto_minor_version_upgrade"{}
+variable "iam_database_authentication_enabled"{}
+variable "copy_tags_to_snapshot"{}
+variable "final_snapshot_identifier"{}
+variable "maintenance_window"{}
 variable "engine_version" {}
 variable "publicly_accessible" {}
 variable "multi_az" {}

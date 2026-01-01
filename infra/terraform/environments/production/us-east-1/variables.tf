@@ -24,6 +24,11 @@ variable "private_subnets" {
   description = "Private Subnet CIDR values"
 }
 
+variable "project" {
+  type    = string
+  default = "CarsHub"
+}
+
 variable "database_subnets" {
   type        = list(string)
   description = "Database Subnet CIDR values"

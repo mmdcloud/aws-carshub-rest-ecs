@@ -13,6 +13,11 @@ variable "db_name" {
   default = "carshub"
 }
 
+variable "project" {
+  type    = string
+  default = "CarsHub"
+}
+
 variable "vehicle-images-code-version" {
   type    = string
   default = "1"

@@ -31,7 +31,7 @@ module "carshub_vpc" {
   one_nat_gateway_per_az  = true
   tags = {
     Environment = "${var.env}"
-    Project     = "carshub"
+    Project     = var.project
   }
 }
 
@@ -60,15 +60,17 @@ module "carshub_frontend_lb_sg" {
   ]
   egress_rules = [
     {
-      description = "Allow all outbound traffic"
-      from_port   = 0
-      to_port     = 0
-      protocol    = "-1"
-      cidr_blocks = ["0.0.0.0/0"]
+      description     = "Allow outbound to ECS tasks only"
+      from_port       = 3000
+      to_port         = 3000
+      protocol        = "tcp"
+      cidr_blocks     = []
+      security_groups = [module.carshub_ecs_frontend_sg.id]
     }
   ]
   tags = {
     Environment = "${var.env}"
+    Project     = var.project
   }
 }
 
@@ -82,29 +84,31 @@ module "carshub_backend_lb_sg" {
       from_port       = 80
       to_port         = 80
       protocol        = "tcp"
-      security_groups = []
-      cidr_blocks     = ["0.0.0.0/0"]
+      security_groups = [module.carshub_frontend_lb_sg.id]
+      cidr_blocks     = []
     },
     {
       description     = "HTTPS Traffic"
       from_port       = 443
       to_port         = 443
       protocol        = "tcp"
-      security_groups = []
-      cidr_blocks     = ["0.0.0.0/0"]
+      security_groups = [module.carshub_frontend_lb_sg.id]
+      cidr_blocks     = []
     }
   ]
   egress_rules = [
     {
-      description = "Allow all outbound traffic"
-      from_port   = 0
-      to_port     = 0
-      protocol    = "-1"
-      cidr_blocks = ["0.0.0.0/0"]
+      description     = "Allow outbound to Backend ECS tasks"
+      from_port       = 80
+      to_port         = 80
+      protocol        = "tcp"
+      cidr_blocks     = []
+      security_groups = [module.carshub_ecs_backend_sg.id]
     }
   ]
   tags = {
     Environment = "${var.env}"
+    Project     = var.project
   }
 }
 
@@ -124,15 +128,33 @@ module "carshub_ecs_frontend_sg" {
   ]
   egress_rules = [
     {
-      description = "Allow all outbound traffic"
-      from_port   = 0
-      to_port     = 0
-      protocol    = "-1"
-      cidr_blocks = ["0.0.0.0/0"]
+      description     = "HTTPS to Backend LB"
+      from_port       = 443
+      to_port         = 443
+      protocol        = "tcp"
+      cidr_blocks     = []
+      security_groups = [module.carshub_backend_lb_sg.id]
+    },
+    {
+      description     = "HTTPS to Internet (for external APIs, updates)"
+      from_port       = 443
+      to_port         = 443
+      protocol        = "tcp"
+      cidr_blocks     = ["0.0.0.0/0"]
+      security_groups = []
+    },
+    {
+      description     = "HTTP to Internet (for redirects)"
+      from_port       = 80
+      to_port         = 80
+      protocol        = "tcp"
+      cidr_blocks     = ["0.0.0.0/0"]
+      security_groups = []
     }
   ]
   tags = {
     Environment = "${var.env}"
+    Project     = var.project
   }
 }
 
@@ -142,7 +164,7 @@ module "carshub_ecs_backend_sg" {
   vpc_id = module.carshub_vpc.vpc_id
   ingress_rules = [
     {
-      description     = "ECS Backend Traffic"
+      description     = "Traffic from Backend ALB"
       from_port       = 80
       to_port         = 80
       protocol        = "tcp"
@@ -152,15 +174,73 @@ module "carshub_ecs_backend_sg" {
   ]
   egress_rules = [
     {
-      description = "Allow all outbound traffic"
-      from_port   = 0
-      to_port     = 0
-      protocol    = "-1"
-      cidr_blocks = ["0.0.0.0/0"]
+      description     = "MySQL to RDS"
+      from_port       = 3306
+      to_port         = 3306
+      protocol        = "tcp"
+      cidr_blocks     = []
+      security_groups = [module.carshub_rds_sg.id]
+    },
+    {
+      description     = "HTTPS to S3 (via VPC endpoint or internet)"
+      from_port       = 443
+      to_port         = 443
+      protocol        = "tcp"
+      cidr_blocks     = ["0.0.0.0/0"]
+      security_groups = []
+    },
+    {
+      description     = "HTTPS to Secrets Manager"
+      from_port       = 443
+      to_port         = 443
+      protocol        = "tcp"
+      cidr_blocks     = ["0.0.0.0/0"]
+      security_groups = []
     }
   ]
   tags = {
     Environment = "${var.env}"
+    Project     = var.project
+  }
+}
+
+module "lambda_sg" {
+  source = "../../../modules/security-groups"
+  name   = "carshub-lambda-sg-${var.env}-${var.region}"
+  vpc_id = module.carshub_vpc.vpc_id
+
+  ingress_rules = []
+
+  egress_rules = [
+    {
+      description     = "MySQL to RDS"
+      from_port       = 3306
+      to_port         = 3306
+      protocol        = "tcp"
+      cidr_blocks     = []
+      security_groups = [module.carshub_rds_sg.id]
+    },
+    {
+      description     = "HTTPS to S3"
+      from_port       = 443
+      to_port         = 443
+      protocol        = "tcp"
+      cidr_blocks     = ["0.0.0.0/0"]
+      security_groups = []
+    },
+    {
+      description     = "HTTPS to Secrets Manager"
+      from_port       = 443
+      to_port         = 443
+      protocol        = "tcp"
+      cidr_blocks     = ["0.0.0.0/0"]
+      security_groups = []
+    }
+  ]
+
+  tags = {
+    Environment = var.env
+    Project     = var.project
   }
 }
 
@@ -170,25 +250,26 @@ module "carshub_rds_sg" {
   vpc_id = module.carshub_vpc.vpc_id
   ingress_rules = [
     {
-      description     = "RDS Traffic"
+      description     = "MySQL from Backend ECS only"
       from_port       = 3306
       to_port         = 3306
       protocol        = "tcp"
       security_groups = [module.carshub_ecs_backend_sg.id]
       cidr_blocks     = []
-    }
-  ]
-  egress_rules = [
+    },
     {
-      description = "Allow all outbound traffic"
-      from_port   = 0
-      to_port     = 0
-      protocol    = "-1"
-      cidr_blocks = ["0.0.0.0/0"]
+      description     = "MySQL from Lambda (for metadata updates)"
+      from_port       = 3306
+      to_port         = 3306
+      protocol        = "tcp"
+      security_groups = [module.lambda_sg.id]
+      cidr_blocks     = []
     }
   ]
+  egress_rules = []
   tags = {
     Environment = "${var.env}"
+    Project     = var.project
   }
 }
 
@@ -277,6 +358,36 @@ module "carshub_frontend_container_registry" {
   image_tag_mutability = "IMMUTABLE"
   bash_command         = "bash ${path.cwd}/../../../../../src/frontend/artifact_push.sh carshub-frontend-${var.env}-${var.region} ${var.region} http://${module.carshub_backend_lb.dns_name} ${module.carshub_media_cloudfront_distribution.domain_name}"
   name                 = "carshub-frontend-${var.env}-${var.region}"
+  lifecycle_policy = jsonencode({
+    rules = [
+      {
+        rulePriority = 1
+        description  = "Keep last 10 images"
+        selection = {
+          tagStatus     = "tagged"
+          tagPrefixList = ["v"]
+          countType     = "imageCountMoreThan"
+          countNumber   = 10
+        }
+        action = {
+          type = "expire"
+        }
+      },
+      {
+        rulePriority = 2
+        description  = "Delete untagged images older than 7 days"
+        selection = {
+          tagStatus   = "untagged"
+          countType   = "sinceImagePushed"
+          countUnit   = "days"
+          countNumber = 7
+        }
+        action = {
+          type = "expire"
+        }
+      }
+    ]
+  })
 }
 
 module "carshub_backend_container_registry" {
@@ -286,6 +397,36 @@ module "carshub_backend_container_registry" {
   image_tag_mutability = "IMMUTABLE"
   bash_command         = "bash ${path.cwd}/../../../../../src/backend/api/artifact_push.sh carshub-backend-${var.env}-${var.region} ${var.region}"
   name                 = "carshub-backend-${var.env}-${var.region}"
+  lifecycle_policy = jsonencode({
+    rules = [
+      {
+        rulePriority = 1
+        description  = "Keep last 10 images"
+        selection = {
+          tagStatus     = "tagged"
+          tagPrefixList = ["v"]
+          countType     = "imageCountMoreThan"
+          countNumber   = 10
+        }
+        action = {
+          type = "expire"
+        }
+      },
+      {
+        rulePriority = 2
+        description  = "Delete untagged images older than 7 days"
+        selection = {
+          tagStatus   = "untagged"
+          countType   = "sinceImagePushed"
+          countUnit   = "days"
+          countNumber = 7
+        }
+        action = {
+          type = "expire"
+        }
+      }
+    ]
+  })
 }
 
 # -----------------------------------------------------------------------------------------
@@ -313,32 +454,50 @@ resource "aws_iam_role_policy_attachment" "rds_monitoring_policy" {
 }
 
 module "carshub_db" {
-  source                                = "../../../modules/rds"
-  db_name                               = "carshubdb${var.env}useast1"
-  allocated_storage                     = 100
-  storage_type                          = "gp3"
-  engine                                = "mysql"
-  engine_version                        = "8.0.40"
-  instance_class                        = "db.r6g.large"
-  multi_az                              = true
-  username                              = tostring(data.vault_generic_secret.rds.data["username"])
-  password                              = tostring(data.vault_generic_secret.rds.data["password"])
-  subnet_group_name                     = "carshub-rds-subnet-group-${var.env}-${var.region}"
+  source     = "../../../modules/rds"
+  db_name    = "carshubdb${var.env}useast1"
+  identifier = "carshub-db-${var.env}"
+
+  allocated_storage     = 100
+  max_allocated_storage = 500
+  storage_type          = "gp3"
+  iops                  = 3000
+  storage_throughput    = 125
+
+  engine                     = "mysql"
+  engine_version             = "8.0.40"
+  instance_class             = "db.r6g.large"
+  auto_minor_version_upgrade = true
+
+  deletion_protection = false
+
+  multi_az = true
+
+  username                            = tostring(data.vault_generic_secret.rds.data["username"])
+  password                            = tostring(data.vault_generic_secret.rds.data["password"])
+  iam_database_authentication_enabled = true
+
+  subnet_group_name      = "carshub-rds-subnet-group-${var.env}-${var.region}"
+  subnet_group_ids       = module.carshub_vpc.database_subnets
+  vpc_security_group_ids = [module.carshub_rds_sg.id]
+  publicly_accessible    = false
+
+  backup_retention_period   = 35
+  backup_window             = "03:00-06:00"
+  copy_tags_to_snapshot     = true
+  skip_final_snapshot       = true
+  final_snapshot_identifier = "carshub-db-final-snapshot-${var.env}-${timestamp()}"
+
+  maintenance_window = "sun:04:00-sun:05:00"
+
   enabled_cloudwatch_logs_exports       = ["audit", "error", "general", "slowquery"]
-  backup_retention_period               = 35
-  backup_window                         = "03:00-06:00"
-  subnet_group_ids                      = module.carshub_vpc.database_subnets
-  vpc_security_group_ids                = [module.carshub_rds_sg.id]
-  publicly_accessible                   = false
-  deletion_protection                   = false
-  skip_final_snapshot                   = true
-  max_allocated_storage                 = 500
   performance_insights_enabled          = true
   performance_insights_retention_period = 7
   monitoring_interval                   = 60
   monitoring_role_arn                   = aws_iam_role.rds_monitoring_role.arn
-  parameter_group_name                  = "carshub-db-pg-${var.env}-${var.region}"
-  parameter_group_family                = "mysql8.0"
+
+  parameter_group_name   = "carshub-db-pg-${var.env}-${var.region}"
+  parameter_group_family = "mysql8.0"
   parameters = [
     {
       name  = "max_connections"
@@ -351,10 +510,51 @@ module "carshub_db" {
     {
       name  = "slow_query_log"
       value = "1"
+    },
+    {
+      name  = "long_query_time"
+      value = "2"
+    },
+    {
+      name  = "log_queries_not_using_indexes"
+      value = "1"
+    },
+    {
+      name  = "innodb_flush_log_at_trx_commit"
+      value = "1"
+    },
+    {
+      name  = "innodb_log_file_size"
+      value = "512M"
+    },
+    {
+      name  = "max_allowed_packet"
+      value = "67108864"
+    },
+    {
+      name  = "character_set_server"
+      value = "utf8mb4"
+    },
+    {
+      name  = "collation_server"
+      value = "utf8mb4_unicode_ci"
+    },
+    {
+      name  = "query_cache_type"
+      value = "0"
+    },
+    {
+      name  = "tmp_table_size"
+      value = "67108864"
+    },
+    {
+      name  = "max_heap_table_size"
+      value = "67108864"
     }
   ]
   tags = {
     Environment = "${var.env}"
+    Project     = var.project
   }
 }
 
@@ -421,6 +621,7 @@ module "carshub_media_bucket" {
   }
   tags = {
     Environment = "${var.env}"
+    Project     = var.project
   }
 }
 
@@ -446,6 +647,7 @@ module "carshub_media_update_function_code" {
   force_destroy      = true
   tags = {
     Environment = "${var.env}"
+    Project     = var.project
   }
 }
 
@@ -472,6 +674,7 @@ module "carshub_frontend_lb_logs" {
   force_destroy      = true
   tags = {
     Environment = "${var.env}"
+    Project     = var.project
   }
 }
 
@@ -498,6 +701,7 @@ module "carshub_backend_lb_logs" {
   force_destroy      = true
   tags = {
     Environment = "${var.env}"
+    Project     = var.project
   }
 }
 
@@ -520,6 +724,7 @@ module "carshub_media_update_function_code_signed" {
   ]
   tags = {
     Environment = "${var.env}"
+    Project     = var.project
   }
 }
 
@@ -578,6 +783,7 @@ module "carshub_media_events_queue" {
   })
   tags = {
     Environment = "${var.env}"
+    Project     = var.project
   }
 }
 
@@ -669,6 +875,7 @@ module "carshub_media_update_function" {
   code_signing_config_arn = module.carshub_signing_profile.config_arn
   tags = {
     Environment = "${var.env}"
+    Project     = var.project
   }
 }
 
@@ -701,7 +908,7 @@ module "carshub_media_cloudfront_distribution" {
   min_ttl                        = 0
   default_ttl                    = 86400
   max_ttl                        = 31536000
-  price_class                    = "PriceClass_100"
+  price_class                    = "PriceClass_200"
   forward_cookies                = "all"
   cloudfront_default_certificate = true
   geo_restriction_type           = "none"
@@ -758,7 +965,7 @@ module "carshub_frontend_lb" {
     }
   }
   tags = {
-    Project     = "carshub"
+    Project     = var.project
     Environment = var.env
   }
   depends_on = [module.carshub_vpc]
@@ -808,7 +1015,7 @@ module "carshub_backend_lb" {
     }
   }
   tags = {
-    Project     = "carshub"
+    Project     = var.project
     Environment = var.env
   }
   depends_on = [module.carshub_vpc]
@@ -908,7 +1115,7 @@ module "carshub_cluster" {
       launch_type              = "FARGATE"
       scheduling_strategy      = "REPLICA"
       requires_compatibilities = ["FARGATE"]
-      container_definitions = {        
+      container_definitions = {
         ecs_frontend = {
           cpu       = 1024
           memory    = 2048
@@ -944,15 +1151,15 @@ module "carshub_cluster" {
               value = "${module.carshub_backend_lb.dns_name}"
             }
           ]
-          readonlyRootFilesystem = false     
+          readonlyRootFilesystem = false
           logConfiguration = {
             logConfiguration = {
-            logDriver = "awslogs"
-            options = {
-              awslogs-group         = module.carshub_frontend_ecs_log_group.name
-              awslogs-region        = var.region
+              logDriver = "awslogs"
+              options = {
+                awslogs-group  = module.carshub_frontend_ecs_log_group.name
+                awslogs-region = var.region
+              }
             }
-          }
           }
           memoryReservation = 100
           restartPolicy = {
@@ -993,7 +1200,7 @@ module "carshub_cluster" {
       launch_type              = "FARGATE"
       scheduling_strategy      = "REPLICA"
       requires_compatibilities = ["FARGATE"]
-      container_definitions = {        
+      container_definitions = {
         ecs_backend = {
           cpu       = 1024
           memory    = 2048
@@ -1033,12 +1240,12 @@ module "carshub_cluster" {
               protocol      = "tcp"
             }
           ]
-          readOnlyRootFilesystem = false          
+          readOnlyRootFilesystem = false
           logConfiguration = {
             logDriver = "awslogs"
             options = {
-              awslogs-group         = module.carshub_backend_ecs_log_group.name
-              awslogs-region        = var.region
+              awslogs-group  = module.carshub_backend_ecs_log_group.name
+              awslogs-region = var.region
             }
           }
           memoryReservation = 100
@@ -1528,5 +1735,23 @@ module "rds_high_connections" {
   ok_actions          = [module.carshub_alarm_notifications.topic_arn]
   dimensions = {
     DBInstanceIdentifier = module.carshub_db.name
+  }
+}
+
+module "rds_swap_usage_alarm" {
+  source              = "../../../modules/cloudwatch/cloudwatch-alarm"
+  alarm_name          = "carshub-rds-swap-usage-${var.env}-${var.region}"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 2
+  metric_name         = "SwapUsage"
+  namespace           = "AWS/RDS"
+  period              = 300
+  statistic           = "Average"
+  threshold           = 1073741824
+  alarm_description   = "Alert when RDS swap usage exceeds 1 GB"
+  alarm_actions       = [module.carshub_alarm_notifications.topic_arn]
+  ok_actions          = [module.carshub_alarm_notifications.topic_arn]
+  dimensions = {
+    DBInstanceIdentifier = module.carshub_db.id
   }
 }

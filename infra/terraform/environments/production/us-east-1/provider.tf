@@ -13,7 +13,7 @@ terraform {
     bucket       = "carshubuseast1tfstate"
     key          = "prod/us-east-1/terraform.tfstate"
     region       = "us-east-1"
-    use_lockfile = true
+    use_lockfile = true    
   }
 }
 
