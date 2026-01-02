@@ -388,6 +388,8 @@ module "carshub_frontend_container_registry" {
       }
     ]
   })
+  # encryption_type = "KMS"
+  # kms_key         = aws_kms_key.ecr.arn
 }
 
 module "carshub_backend_container_registry" {
@@ -427,6 +429,11 @@ module "carshub_backend_container_registry" {
       }
     ]
   })
+
+  # Uncomment this only if you want to enable KMS Keys
+
+  # encryption_type = "KMS"
+  # kms_key         = aws_kms_key.ecr.arn
 }
 
 # -----------------------------------------------------------------------------------------

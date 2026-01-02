@@ -9,6 +9,9 @@ resource "aws_db_instance" "db" {
   copy_tags_to_snapshot                 = var.copy_tags_to_snapshot
   final_snapshot_identifier             = var.final_snapshot_identifier
   maintenance_window                    = var.maintenance_window
+  kms_key_id                            = var.kms_key_id
+  performance_insights_kms_key_id = var.performance_insights_kms_key_id 
+  storage_encrypted                     = var.storage_encrypted
   engine                                = var.engine
   engine_version                        = var.engine_version
   publicly_accessible                   = var.publicly_accessible

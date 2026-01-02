@@ -351,6 +351,17 @@ resource "aws_flow_log" "carshub_vpc_flow_log" {
 # -----------------------------------------------------------------------------------------
 # ECR Module
 # -----------------------------------------------------------------------------------------
+
+# Uncomment only if KMS is needed
+
+# module "carshub_kms_ecr" {
+#   source = "../../../modules/kms"
+#   name = "carshub-kms-ecr-${var.env}-${var.region}"
+#   description             = "KMS key for ECR encryption"
+#   deletion_window_in_days = 30
+#   enable_key_rotation     = true
+# }
+
 module "carshub_frontend_container_registry" {
   source               = "../../../modules/ecr"
   force_delete         = true
@@ -388,6 +399,11 @@ module "carshub_frontend_container_registry" {
       }
     ]
   })
+
+  # Uncomment only if KMS is needed
+
+  # encryption_type = "KMS"
+  # kms_key         = module.carshub_kms_ecr.key_id
 }
 
 module "carshub_backend_container_registry" {
@@ -427,6 +443,11 @@ module "carshub_backend_container_registry" {
       }
     ]
   })
+
+  # Uncomment only if KMS is needed
+
+  # encryption_type = "KMS"
+  # kms_key         = module.carshub_kms_ecr.key_id
 }
 
 # -----------------------------------------------------------------------------------------
@@ -453,6 +474,16 @@ resource "aws_iam_role_policy_attachment" "rds_monitoring_policy" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonRDSEnhancedMonitoringRole"
 }
 
+# Uncomment only if KMS is needed
+
+# module "carshub_kms_rds" {
+#   source = "../../../modules/kms"
+#   name = "carshub-kms-rds-${var.env}-${var.region}"
+#   description             = "KMS key for ECR encryption"
+#   deletion_window_in_days = 30
+#   enable_key_rotation     = true
+# }
+
 module "carshub_db" {
   source     = "../../../modules/rds"
   db_name    = "carshubdb${var.env}useast1"
@@ -461,8 +492,10 @@ module "carshub_db" {
   allocated_storage     = 100
   max_allocated_storage = 500
   storage_type          = "gp3"
-  iops                  = 3000
-  storage_throughput    = 125
+  storage_encrypted     = true
+  # kms_key_id                            = module.carshub_kms_rds.arn 
+  iops               = 3000
+  storage_throughput = 125
 
   engine                     = "mysql"
   engine_version             = "8.0.40"
@@ -494,7 +527,8 @@ module "carshub_db" {
   performance_insights_enabled          = true
   performance_insights_retention_period = 7
   monitoring_interval                   = 60
-  monitoring_role_arn                   = aws_iam_role.rds_monitoring_role.arn
+  # performance_insights_kms_key_id       = module.carshub_kms_rds.arn
+  monitoring_role_arn = aws_iam_role.rds_monitoring_role.arn
 
   parameter_group_name   = "carshub-db-pg-${var.env}-${var.region}"
   parameter_group_family = "mysql8.0"

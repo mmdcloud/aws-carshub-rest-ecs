@@ -9,10 +9,22 @@ variable "iam_database_authentication_enabled"{}
 variable "copy_tags_to_snapshot"{}
 variable "final_snapshot_identifier"{}
 variable "maintenance_window"{}
+variable "performance_insights_kms_key_id" {
+  type = string
+  default = null
+}
 variable "engine_version" {}
+variable "kms_key_id" {
+  type = string
+  default = null
+}
 variable "publicly_accessible" {}
 variable "multi_az" {}
 variable "instance_class" {}
+variable "storage_encrypted" {
+  type = bool
+  default = false
+}
 variable "username" {}
 variable "password" {}
 variable "parameter_group_name" {}
