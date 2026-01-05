@@ -59,13 +59,21 @@ module "carshub_frontend_lb_sg" {
     }
   ]
   egress_rules = [
+    # {
+    #   description     = "Allow outbound to ECS tasks only"
+    #   from_port       = 3000
+    #   to_port         = 3000
+    #   protocol        = "tcp"
+    #   cidr_blocks     = []
+    #   security_groups = [module.carshub_ecs_frontend_sg.id]
+    # }
     {
-      description     = "Allow outbound to ECS tasks only"
-      from_port       = 3000
-      to_port         = 3000
+      description     = "Allow outbound traffic to al"
+      from_port       = 0
+      to_port         = 0
       protocol        = "tcp"
-      cidr_blocks     = []
-      security_groups = [module.carshub_ecs_frontend_sg.id]
+      cidr_blocks     = ["0.0.0.0/0"]
+      security_groups = []
     }
   ]
   tags = {
@@ -97,13 +105,21 @@ module "carshub_backend_lb_sg" {
     }
   ]
   egress_rules = [
+    # {
+    #   description     = "Allow outbound to Backend ECS tasks"
+    #   from_port       = 80
+    #   to_port         = 80
+    #   protocol        = "tcp"
+    #   cidr_blocks     = []
+    #   security_groups = [module.carshub_ecs_backend_sg.id]
+    # }
     {
-      description     = "Allow outbound to Backend ECS tasks"
-      from_port       = 80
-      to_port         = 80
+      description     = "Allow outbound traffic to al"
+      from_port       = 0
+      to_port         = 0
       protocol        = "tcp"
-      cidr_blocks     = []
-      security_groups = [module.carshub_ecs_backend_sg.id]
+      cidr_blocks     = ["0.0.0.0/0"]
+      security_groups = []
     }
   ]
   tags = {
@@ -127,26 +143,34 @@ module "carshub_ecs_frontend_sg" {
     }
   ]
   egress_rules = [
+    # {
+    #   description     = "HTTPS to Backend LB"
+    #   from_port       = 443
+    #   to_port         = 443
+    #   protocol        = "tcp"
+    #   cidr_blocks     = []
+    #   security_groups = [module.carshub_backend_lb_sg.id]
+    # },
+    # {
+    #   description     = "HTTPS to Internet (for external APIs, updates)"
+    #   from_port       = 443
+    #   to_port         = 443
+    #   protocol        = "tcp"
+    #   cidr_blocks     = ["0.0.0.0/0"]
+    #   security_groups = []
+    # },
+    # {
+    #   description     = "HTTP to Internet (for redirects)"
+    #   from_port       = 80
+    #   to_port         = 80
+    #   protocol        = "tcp"
+    #   cidr_blocks     = ["0.0.0.0/0"]
+    #   security_groups = []
+    # }
     {
-      description     = "HTTPS to Backend LB"
-      from_port       = 443
-      to_port         = 443
-      protocol        = "tcp"
-      cidr_blocks     = []
-      security_groups = [module.carshub_backend_lb_sg.id]
-    },
-    {
-      description     = "HTTPS to Internet (for external APIs, updates)"
-      from_port       = 443
-      to_port         = 443
-      protocol        = "tcp"
-      cidr_blocks     = ["0.0.0.0/0"]
-      security_groups = []
-    },
-    {
-      description     = "HTTP to Internet (for redirects)"
-      from_port       = 80
-      to_port         = 80
+      description     = "Allow outbound traffic to al"
+      from_port       = 0
+      to_port         = 0
       protocol        = "tcp"
       cidr_blocks     = ["0.0.0.0/0"]
       security_groups = []
@@ -173,26 +197,34 @@ module "carshub_ecs_backend_sg" {
     }
   ]
   egress_rules = [
+    # {
+    #   description     = "MySQL to RDS"
+    #   from_port       = 3306
+    #   to_port         = 3306
+    #   protocol        = "tcp"
+    #   cidr_blocks     = []
+    #   security_groups = [module.carshub_rds_sg.id]
+    # },
+    # {
+    #   description     = "HTTPS to S3 (via VPC endpoint or internet)"
+    #   from_port       = 443
+    #   to_port         = 443
+    #   protocol        = "tcp"
+    #   cidr_blocks     = ["0.0.0.0/0"]
+    #   security_groups = []
+    # },
+    # {
+    #   description     = "HTTPS to Secrets Manager"
+    #   from_port       = 443
+    #   to_port         = 443
+    #   protocol        = "tcp"
+    #   cidr_blocks     = ["0.0.0.0/0"]
+    #   security_groups = []
+    # }
     {
-      description     = "MySQL to RDS"
-      from_port       = 3306
-      to_port         = 3306
-      protocol        = "tcp"
-      cidr_blocks     = []
-      security_groups = [module.carshub_rds_sg.id]
-    },
-    {
-      description     = "HTTPS to S3 (via VPC endpoint or internet)"
-      from_port       = 443
-      to_port         = 443
-      protocol        = "tcp"
-      cidr_blocks     = ["0.0.0.0/0"]
-      security_groups = []
-    },
-    {
-      description     = "HTTPS to Secrets Manager"
-      from_port       = 443
-      to_port         = 443
+      description     = "Allow outbound traffic to al"
+      from_port       = 0
+      to_port         = 0
       protocol        = "tcp"
       cidr_blocks     = ["0.0.0.0/0"]
       security_groups = []
@@ -204,45 +236,45 @@ module "carshub_ecs_backend_sg" {
   }
 }
 
-module "lambda_sg" {
-  source = "../../../modules/security-groups"
-  name   = "carshub-lambda-sg-${var.env}-${var.region}"
-  vpc_id = module.carshub_vpc.vpc_id
+# module "lambda_sg" {
+#   source = "../../../modules/security-groups"
+#   name   = "carshub-lambda-sg-${var.env}-${var.region}"
+#   vpc_id = module.carshub_vpc.vpc_id
 
-  ingress_rules = []
+#   ingress_rules = []
 
-  egress_rules = [
-    {
-      description     = "MySQL to RDS"
-      from_port       = 3306
-      to_port         = 3306
-      protocol        = "tcp"
-      cidr_blocks     = []
-      security_groups = [module.carshub_rds_sg.id]
-    },
-    {
-      description     = "HTTPS to S3"
-      from_port       = 443
-      to_port         = 443
-      protocol        = "tcp"
-      cidr_blocks     = ["0.0.0.0/0"]
-      security_groups = []
-    },
-    {
-      description     = "HTTPS to Secrets Manager"
-      from_port       = 443
-      to_port         = 443
-      protocol        = "tcp"
-      cidr_blocks     = ["0.0.0.0/0"]
-      security_groups = []
-    }
-  ]
+#   egress_rules = [
+#     {
+#       description     = "MySQL to RDS"
+#       from_port       = 3306
+#       to_port         = 3306
+#       protocol        = "tcp"
+#       cidr_blocks     = []
+#       security_groups = [module.carshub_rds_sg.id]
+#     },
+#     {
+#       description     = "HTTPS to S3"
+#       from_port       = 443
+#       to_port         = 443
+#       protocol        = "tcp"
+#       cidr_blocks     = ["0.0.0.0/0"]
+#       security_groups = []
+#     },
+#     {
+#       description     = "HTTPS to Secrets Manager"
+#       from_port       = 443
+#       to_port         = 443
+#       protocol        = "tcp"
+#       cidr_blocks     = ["0.0.0.0/0"]
+#       security_groups = []
+#     }
+#   ]
 
-  tags = {
-    Environment = var.env
-    Project     = var.project
-  }
-}
+#   tags = {
+#     Environment = var.env
+#     Project     = var.project
+#   }
+# }
 
 module "carshub_rds_sg" {
   source = "../../../modules/security-groups"
@@ -257,16 +289,25 @@ module "carshub_rds_sg" {
       security_groups = [module.carshub_ecs_backend_sg.id]
       cidr_blocks     = []
     },
+    # {
+    #   description     = "MySQL from Lambda (for metadata updates)"
+    #   from_port       = 3306
+    #   to_port         = 3306
+    #   protocol        = "tcp"
+    #   security_groups = [module.lambda_sg.id]
+    #   cidr_blocks     = []
+    # }
+  ]
+  egress_rules = [
     {
-      description     = "MySQL from Lambda (for metadata updates)"
-      from_port       = 3306
-      to_port         = 3306
+      description     = "Allow outbound traffic to al"
+      from_port       = 0
+      to_port         = 0
       protocol        = "tcp"
-      security_groups = [module.lambda_sg.id]
-      cidr_blocks     = []
+      cidr_blocks     = ["0.0.0.0/0"]
+      security_groups = []
     }
   ]
-  egress_rules = []
   tags = {
     Environment = "${var.env}"
     Project     = var.project
@@ -1154,13 +1195,7 @@ module "carshub_cluster" {
           cpu       = 1024
           memory    = 2048
           essential = true
-          image     = "${module.carshub_frontend_container_registry.repository_url}:latest"
-          placementStrategy = [
-            {
-              type  = "spread",
-              field = "attribute:ecs.availability-zone"
-            }
-          ]
+          image     = "${module.carshub_frontend_container_registry.repository_url}:latest"          
           healthCheck = {
             command = ["CMD-SHELL", "curl -f http://localhost:3000/auth/signin || exit 1"]
           }
@@ -1239,13 +1274,7 @@ module "carshub_cluster" {
           cpu       = 1024
           memory    = 2048
           essential = true
-          image     = "${module.carshub_backend_container_registry.repository_url}:latest"
-          placementStrategy = [
-            {
-              type  = "spread",
-              field = "attribute:ecs.availability-zone"
-            }
-          ]
+          image     = "${module.carshub_backend_container_registry.repository_url}:latest"          
           healthCheck = {
             command = ["CMD-SHELL", "curl -f http://localhost:80 || exit 1"]
           }
@@ -1316,7 +1345,7 @@ module "carshub_frontend_app_autoscaling_policy" {
   policies = [
     {
       name        = "worker-scale-up"
-      policy_type = "TargetTrackingScaling"
+      policy_type = "StepScaling"
       step_scaling_policy_configuration = {
         adjustment_type          = "ChangeInCapacity"
         cooldown                 = 60
@@ -1348,7 +1377,7 @@ module "carshub_backend_app_autoscaling_policy" {
   policies = [
     {
       name        = "worker-scale-up"
-      policy_type = "TargetTrackingScaling"
+      policy_type = "StepScaling"
       step_scaling_policy_configuration = {
         adjustment_type          = "ChangeInCapacity"
         cooldown                 = 60
