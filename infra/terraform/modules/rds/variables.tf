@@ -2,8 +2,14 @@ variable "allocated_storage" {}
 variable "db_name" {}
 variable "engine" {}
 variable "identifier"{}
-variable "iops"{}
-variable "storage_throughput"{}
+variable "iops"{
+  type = number
+  default = 0
+}
+variable "storage_throughput"{
+  type = number
+  default = 0
+}
 variable "auto_minor_version_upgrade"{}
 variable "iam_database_authentication_enabled"{}
 variable "copy_tags_to_snapshot"{}
