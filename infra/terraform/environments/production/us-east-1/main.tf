@@ -380,6 +380,7 @@ module "flow_logs_role" {
 module "carshub_flow_log_group" {
   source            = "../../../modules/cloudwatch/cloudwatch-log-group"
   log_group_name    = "/aws/vpc/flow-logs/carshub-application-${var.env}-${var.region}"
+  skip_destroy      = false
   retention_in_days = 365
 }
 
@@ -1050,6 +1051,7 @@ module "carshub_media_cloudfront_distribution" {
   query_string                   = true
   tags = {
     Environment = "${var.env}"
+    Project     = var.project
   }
 }
 
@@ -1219,12 +1221,14 @@ resource "aws_iam_role_policy_attachment" "ecs_task_xray" {
 module "carshub_frontend_ecs_log_group" {
   source            = "../../../modules/cloudwatch/cloudwatch-log-group"
   log_group_name    = "/aws/ecs/carshub-frontend-ecs-${var.env}-${var.region}"
+  skip_destroy      = false
   retention_in_days = 90
 }
 
 module "carshub_backend_ecs_log_group" {
   source            = "../../../modules/cloudwatch/cloudwatch-log-group"
   log_group_name    = "/aws/ecs/carshub-backend-ecs-${var.env}-${var.region}"
+  skip_destroy      = false
   retention_in_days = 90
 }
 
@@ -1285,8 +1289,8 @@ module "carshub_cluster" {
             logConfiguration = {
               logDriver = "awslogs"
               options = {
-                awslogs-group  = module.carshub_frontend_ecs_log_group.name
-                awslogs-region = var.region
+                awslogs-group         = module.carshub_frontend_ecs_log_group.name
+                awslogs-region        = var.region
                 awslogs-stream-prefix = "carshub-frontend"
               }
             }
@@ -1368,8 +1372,8 @@ module "carshub_cluster" {
           logConfiguration = {
             logDriver = "awslogs"
             options = {
-              awslogs-group  = module.carshub_backend_ecs_log_group.name
-              awslogs-region = var.region
+              awslogs-group         = module.carshub_backend_ecs_log_group.name
+              awslogs-region        = var.region
               awslogs-stream-prefix = "carshub-backend"
             }
           }
