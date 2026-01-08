@@ -1413,10 +1413,10 @@ module "carshub_frontend_app_autoscaling_policy" {
       name        = "worker-scale-up"
       policy_type = "StepScaling"
       step_scaling_policy_configuration = {
-        adjustment_type          = "ChangeInCapacity"
-        cooldown                 = 60
-        metric_aggregation_type  = "Average"
-        min_adjustment_magnitude = 1
+        adjustment_type         = "ChangeInCapacity"
+        cooldown                = 60
+        metric_aggregation_type = "Average"
+        # Remove min_adjustment_magnitude - it's invalid with ChangeInCapacity
         step_adjustment = [
           {
             metric_interval_lower_bound = 0
@@ -1445,10 +1445,10 @@ module "carshub_backend_app_autoscaling_policy" {
       name        = "worker-scale-up"
       policy_type = "StepScaling"
       step_scaling_policy_configuration = {
-        adjustment_type          = "ChangeInCapacity"
-        cooldown                 = 60
-        metric_aggregation_type  = "Average"
-        min_adjustment_magnitude = 1
+        adjustment_type         = "ChangeInCapacity"
+        cooldown                = 60
+        metric_aggregation_type = "Average"
+        # Remove min_adjustment_magnitude - it's invalid with ChangeInCapacity
         step_adjustment = [
           {
             metric_interval_lower_bound = 0
