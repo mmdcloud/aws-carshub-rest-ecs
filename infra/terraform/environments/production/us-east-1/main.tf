@@ -1067,7 +1067,7 @@ module "carshub_frontend_lb" {
   enable_deletion_protection = false
   drop_invalid_header_fields = true
   ip_address_type            = "ipv4"
-  internal                   = true
+  internal                   = false
   security_groups = [
     module.carshub_frontend_lb_sg.id
   ]
