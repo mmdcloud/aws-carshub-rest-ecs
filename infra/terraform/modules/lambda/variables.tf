@@ -31,3 +31,8 @@ variable "vpc_config" {
     subnet_ids         = set(string)
   })
 }
+variable "dead_letter_config" {
+  type = object({
+    target_arn = string
+  })
+}

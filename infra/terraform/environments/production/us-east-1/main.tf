@@ -909,8 +909,6 @@ module "carshub_media_events_queue" {
   queue_name                    = "carshub-media-events-queue-${var.env}-${var.region}"
   delay_seconds                 = 0
   maxReceiveCount               = 3
-  dlq_message_retention_seconds = 86400
-  dlq_name                      = "carshub-media-events-dlq-${var.env}-${var.region}"
   max_message_size              = 262144
   message_retention_seconds     = 345600
   visibility_timeout_seconds    = 180
@@ -931,6 +929,22 @@ module "carshub_media_events_queue" {
       }
     ]
   })
+  tags = {
+    Environment = "${var.env}"
+    Project     = var.project
+  }
+}
+
+module "carshub_media_events_dlq" {
+  source                        = "../../../modules/sqs"
+  queue_name                    = "carshub-media-events-dlq-${var.env}-${var.region}"
+  delay_seconds                 = 0
+  maxReceiveCount               = 3
+  max_message_size              = 262144
+  message_retention_seconds     = 345600
+  visibility_timeout_seconds    = 180
+  receive_wait_time_seconds     = 20
+  policy = ""
   tags = {
     Environment = "${var.env}"
     Project     = var.project
@@ -1014,6 +1028,9 @@ module "carshub_media_update_function" {
   vpc_config = {
     security_group_ids = [module.carshub_lambda_sg.id]
     subnet_ids         = module.carshub_vpc.private_subnets
+  }
+  dead_letter_config = {
+    target_arn = module.carshub_media_events_dlq.arn
   }
   env_variables = {
     SECRET_NAME = module.carshub_db_credentials.name
