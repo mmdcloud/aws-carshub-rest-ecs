@@ -65,7 +65,7 @@ module "carshub_frontend_lb_sg" {
       description     = "Allow outbound traffic to al"
       from_port       = 0
       to_port         = 0
-      protocol        = "tcp"
+      protocol        = "-1"
       cidr_blocks     = ["0.0.0.0/0"]
       security_groups = []
     }
@@ -113,7 +113,7 @@ module "carshub_backend_lb_sg" {
       description     = "Allow outbound traffic to al"
       from_port       = 0
       to_port         = 0
-      protocol        = "tcp"
+      protocol        = "-1"
       cidr_blocks     = ["0.0.0.0/0"]
       security_groups = []
     }
@@ -153,7 +153,7 @@ module "carshub_ecs_frontend_sg" {
       description     = "Allow outbound traffic to al"
       from_port       = 0
       to_port         = 0
-      protocol        = "tcp"
+      protocol        = "-1"
       cidr_blocks     = ["0.0.0.0/0"]
       security_groups = []
     }
@@ -211,7 +211,7 @@ module "carshub_ecs_backend_sg" {
       description     = "Allow outbound traffic to al"
       from_port       = 0
       to_port         = 0
-      protocol        = "tcp"
+      protocol        = "-1"
       cidr_blocks     = ["0.0.0.0/0"]
       security_groups = []
     }
@@ -273,14 +273,6 @@ module "carshub_lambda_sg" {
       protocol        = "tcp"
       cidr_blocks     = ["0.0.0.0/0"]
       security_groups = []
-    },
-    {
-      description     = "HTTPS to Secrets Manager"
-      from_port       = 443
-      to_port         = 443
-      protocol        = "tcp"
-      cidr_blocks     = ["0.0.0.0/0"]
-      security_groups = []
     }
   ]
 
@@ -309,7 +301,7 @@ module "carshub_rds_sg" {
       description     = "Allow outbound traffic to al"
       from_port       = 0
       to_port         = 0
-      protocol        = "tcp"
+      protocol        = "-1"
       cidr_blocks     = ["0.0.0.0/0"]
       security_groups = []
     }
@@ -905,14 +897,14 @@ resource "aws_lambda_event_source_mapping" "sqs_event_trigger" {
 
 # SQS Queue for buffering S3 events
 module "carshub_media_events_queue" {
-  source                        = "../../../modules/sqs"
-  queue_name                    = "carshub-media-events-queue-${var.env}-${var.region}"
-  delay_seconds                 = 0
-  maxReceiveCount               = 3
-  max_message_size              = 262144
-  message_retention_seconds     = 345600
-  visibility_timeout_seconds    = 180
-  receive_wait_time_seconds     = 20
+  source                     = "../../../modules/sqs"
+  queue_name                 = "carshub-media-events-queue-${var.env}-${var.region}"
+  delay_seconds              = 0
+  maxReceiveCount            = 3
+  max_message_size           = 262144
+  message_retention_seconds  = 345600
+  visibility_timeout_seconds = 180
+  receive_wait_time_seconds  = 20
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
@@ -936,15 +928,15 @@ module "carshub_media_events_queue" {
 }
 
 module "carshub_media_events_dlq" {
-  source                        = "../../../modules/sqs"
-  queue_name                    = "carshub-media-events-dlq-${var.env}-${var.region}"
-  delay_seconds                 = 0
-  maxReceiveCount               = 3
-  max_message_size              = 262144
-  message_retention_seconds     = 345600
-  visibility_timeout_seconds    = 180
-  receive_wait_time_seconds     = 20
-  policy = ""
+  source                     = "../../../modules/sqs"
+  queue_name                 = "carshub-media-events-dlq-${var.env}-${var.region}"
+  delay_seconds              = 0
+  maxReceiveCount            = 3
+  max_message_size           = 262144
+  message_retention_seconds  = 345600
+  visibility_timeout_seconds = 180
+  receive_wait_time_seconds  = 20
+  policy                     = ""
   tags = {
     Environment = "${var.env}"
     Project     = var.project
@@ -1006,6 +998,22 @@ module "carshub_media_update_function_iam_role" {
               ],
               "Effect"   : "Allow",
               "Resource" : "${module.carshub_media_events_queue.arn}"
+            },
+            {
+              "Action": [
+                "sqs:*"
+              ],
+              "Effect"   : "Allow",
+              "Resource" : "${module.carshub_media_events_dlq.arn}"
+            },
+            {
+              "Action": [
+                "ec2:CreateNetworkInterface",
+                "ec2:DescribeNetworkInterfaces",
+                "ec2:DeleteNetworkInterface"
+              ],
+              "Effect"   : "Allow",
+              "Resource" : "*"
             }
         ]
     }
@@ -1152,7 +1160,7 @@ module "carshub_backend_lb" {
   enable_deletion_protection = false
   drop_invalid_header_fields = true
   ip_address_type            = "ipv4"
-  internal                   = true
+  internal                   = false
   security_groups = [
     module.carshub_backend_lb_sg.id
   ]

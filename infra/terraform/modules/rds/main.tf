@@ -2,8 +2,8 @@ resource "aws_db_instance" "db" {
   allocated_storage                     = var.allocated_storage
   db_name                               = var.db_name
   identifier                            = var.identifier
-  iops                                  = var.iops
-  storage_throughput                    = var.storage_throughput
+  # iops                                  = var.iops
+  # storage_throughput                    = var.storage_throughput
   auto_minor_version_upgrade            = var.auto_minor_version_upgrade
   iam_database_authentication_enabled   = var.iam_database_authentication_enabled
   copy_tags_to_snapshot                 = var.copy_tags_to_snapshot

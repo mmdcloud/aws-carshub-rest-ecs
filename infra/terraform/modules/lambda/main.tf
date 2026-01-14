@@ -7,16 +7,16 @@ resource "aws_lambda_function" "function" {
   s3_bucket     = var.s3_bucket
   s3_key        = var.s3_key
   dynamic "dead_letter_config" {
-    for_each = var.dead_letter_config != null ? [1] : [0]
+    for_each = var.dead_letter_config == null ? [] : [var.dead_letter_config]
     content {
       target_arn = dead_letter_config.value.target_arn
     }
   }
   dynamic "vpc_config" {
-    for_each = var.vpc_config != null ? [1] : []
+    for_each = var.vpc_config == null ? [] : [var.vpc_config]
     content {
       security_group_ids = vpc_config.value.security_group_ids
-      subnet_ids         = vpc_config.value.subnet_group_ids
+      subnet_ids         = vpc_config.value.subnet_ids
     }
   }
   environment {
