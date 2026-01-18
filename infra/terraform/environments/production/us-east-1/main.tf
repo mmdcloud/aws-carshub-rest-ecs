@@ -1042,7 +1042,7 @@ module "carshub_media_update_function" {
   }
   env_variables = {
     SECRET_NAME = module.carshub_db_credentials.name
-    DB_HOST     = tostring(split(":", module.carshub_db.endpoint)[0])
+    DB_HOST     = module.carshub_db.address
     DB_NAME     = var.db_name
     REGION      = var.region
   }
@@ -1396,11 +1396,21 @@ module "carshub_cluster" {
           environment = [
             {
               name  = "DB_PATH"
-              value = "${tostring(split(":", module.carshub_db.endpoint)[0])}"
+              value = "${module.carshub_db.address}"
             },
             {
               name  = "DB_NAME"
               value = "${module.carshub_db.name}"
+            }            
+          ]
+          secrets = [
+            {
+              name  = "UN"
+              valueFrom = "${module.carshub_db_credentials.arn}:username::"
+            },
+            {
+              name  = "CREDS"
+              valueFrom = "${module.carshub_db_credentials.arn}:password::"
             }
           ]
           portMappings = [
