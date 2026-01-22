@@ -1,6 +1,93 @@
 data "aws_caller_identity" "current" {}
 
 # -----------------------------------------------------------------------------------------
+# Imports
+# -----------------------------------------------------------------------------------------
+
+# --------------------------------- Dev ---------------------------------
+data "aws_ecr_repository" "carshub_frontend_ecr_dev_us_east_1" {
+  name = "carshub-frontend-dev-us-east-1"
+}
+
+data "aws_ecr_repository" "carshub_backend_ecr_dev_us_east_1" {
+  name = "carshub-backend-dev-us-east-1"
+}
+
+data "aws_ecs_cluster" "carshub_ecs_dev_us_east_1" {
+  cluster_name = "carshub-ecs-cluster-dev-us-east-1"
+}
+
+data "aws_ecs_service" "carshub_ecs_service_frontend_dev_us_east_1" {
+  cluster_arn  = data.aws_ecs_cluster.carshub_ecs_dev_us_east_1.arn
+  service_name = "ecs_frontend"
+}
+
+data "aws_ecs_service" "carshub_ecs_service_backend_dev_us_east_1" {
+  cluster_arn  = data.aws_ecs_cluster.carshub_ecs_dev_us_east_1.arn
+  service_name = "ecs_backend"
+}
+
+# --------------------------------- Staging ---------------------------------
+data "aws_ecr_repository" "carshub_frontend_ecr_staging_us_east_1" {
+  name = "carshub-frontend-staging-us-east-1"
+}
+
+data "aws_ecr_repository" "carshub_backend_ecr_staging_us_east_1" {
+  name = "carshub-backend-staging-us-east-1"
+}
+
+data "aws_ecs_cluster" "carshub_ecs_staging_us_east_1" {
+  cluster_name = "carshub-ecs-cluster-staging-us-east-1"
+}
+
+data "aws_ecs_service" "carshub_ecs_service_frontend_staging_us_east_1" {
+  cluster_arn  = data.aws_ecs_cluster.carshub_ecs_staging_us_east_1.arn
+  service_name = "ecs_frontend"
+}
+
+data "aws_ecs_service" "carshub_ecs_service_backend_staging_us_east_1" {
+  cluster_arn  = data.aws_ecs_cluster.carshub_ecs_staging_us_east_1.arn
+  service_name = "ecs_backend"
+}
+
+# --------------------------------- Prod ---------------------------------
+data "aws_ecr_repository" "carshub_frontend_ecr_prod_us_east_1" {
+  name = "carshub-frontend-prod-us-east-1"
+}
+
+data "aws_ecr_repository" "carshub_backend_ecr_prod_us_east_1" {
+  name = "carshub-backend-prod-us-east-1"
+}
+
+data "aws_ecs_cluster" "carshub_ecs_prod_us_east_1" {
+  cluster_name = "carshub-ecs-cluster-prod-us-east-1"
+}
+
+data "aws_ecs_service" "carshub_ecs_service_frontend_prod_us_east_1" {
+  cluster_arn  = data.aws_ecs_cluster.carshub_ecs_prod_us_east_1.arn
+  service_name = "ecs_frontend"
+}
+
+data "aws_ecs_service" "carshub_ecs_service_backend_prod_us_east_1" {
+  cluster_arn  = data.aws_ecs_cluster.carshub_ecs_prod_us_east_1.arn
+  service_name = "ecs_backend"
+}
+
+# -----------------------------------------------------------------------------------------
+# SNS Configuration
+# -----------------------------------------------------------------------------------------
+module "carshub_infra_alarm_notifications" {
+  source     = "./modules/sns"
+  topic_name = "carshub-infra-alarm-notification-topic"
+  subscriptions = [
+    {
+      protocol = "email"
+      endpoint = "madmaxcloudonline@gmail.com"
+    }
+  ]
+}
+
+# -----------------------------------------------------------------------------------------
 # CodeBuild Configuration
 # -----------------------------------------------------------------------------------------
 module "codebuild_cache_bucket" {
@@ -96,8 +183,8 @@ module "carshub_codebuild_iam_role" {
                   "ecr:UploadLayerPart"
                 ],
                 "Resource": [
-                  "${module.carshub_frontend_container_registry.arn}",
-                  "${module.carshub_backend_container_registry.arn}"
+                  "${data.aws_ecr_repository.carshub_frontend_ecr_prod_us_east_1.arn}",
+                  "${data.aws_ecr_repository.carshub_backend_ecr_prod_us_east_1.arn}"
                 ],
                 "Effect": "Allow"
             }
@@ -192,6 +279,12 @@ module "carshub_frontend_codepipeline_bucket" {
       allowed_methods = ["GET"]
       allowed_origins = ["*"]
       max_age_seconds = 3000
+    },
+    {
+      allowed_headers = ["*"]
+      allowed_methods = ["PUT"]
+      allowed_origins = ["*"]
+      max_age_seconds = 3000
     }
   ]
   versioning_enabled = "Enabled"
@@ -213,6 +306,12 @@ module "carshub_backend_codepipeline_bucket" {
     {
       allowed_headers = ["*"]
       allowed_methods = ["GET"]
+      allowed_origins = ["*"]
+      max_age_seconds = 3000
+    },
+    {
+      allowed_headers = ["*"]
+      allowed_methods = ["PUT"]
       allowed_origins = ["*"]
       max_age_seconds = 3000
     }
@@ -363,6 +462,27 @@ module "carshub_frontend_codepipeline" {
       ]
     },
     {
+      name = "Deploy To Staging"
+      actions = [
+        {
+          name             = "DeployToStaging"
+          category         = "Deploy"
+          owner            = "AWS"
+          provider         = "ECS"
+          version          = "1"
+          action_type_id   = "DeployToStaging"
+          run_order        = 1
+          input_artifacts  = ["build_output"]
+          output_artifacts = []
+          configuration = {
+            ClusterName = "${data.aws_ecs_cluster.carshub_ecs_staging_us_east_1.cluster_name}"
+            ServiceName = "${data.aws_ecs_service.carshub_ecs_service_frontend_staging_us_east_1.service_name}"
+            FileName    = "imagedefinitions.json"
+          }
+        }
+      ]
+    },
+    {
       name = "Approval"
       actions = [{
         name             = "ManualApproval"
@@ -373,27 +493,27 @@ module "carshub_frontend_codepipeline" {
         output_artifacts = []
         version          = "1"
         configuration = {
-          NotificationArn = "${module.carshub_alarm_notifications.topic_arn}"
+          NotificationArn = "${module.carshub_infra_alarm_notifications.topic_arn}"
           CustomData      = "Approve production deployment"
         }
       }]
     },
     {
-      name = "Deploy"
+      name = "Deploy To Prod"
       actions = [
         {
-          name             = "DeployToECS"
+          name             = "DeployToProd"
           category         = "Deploy"
           owner            = "AWS"
           provider         = "ECS"
           version          = "1"
-          action_type_id   = "DeployToECS"
+          action_type_id   = "DeployToProd"
           run_order        = 1
           input_artifacts  = ["build_output"]
           output_artifacts = []
           configuration = {
-            ClusterName = "${module.carshub_cluster.cluster_name}"
-            ServiceName = "${module.carshub_cluster.services["ecs-frontend"].name}"
+            ClusterName = "${data.aws_ecs_cluster.carshub_ecs_prod_us_east_1.cluster_name}"
+            ServiceName = "${data.aws_ecs_service.carshub_ecs_service_frontend_prod_us_east_1.service_name}"
             FileName    = "imagedefinitions.json"
           }
         }
@@ -453,6 +573,27 @@ module "carshub_backend_codepipeline" {
       ]
     },
     {
+      name = "Deploy To Staging"
+      actions = [
+        {
+          name             = "DeployToStaging"
+          category         = "Deploy"
+          owner            = "AWS"
+          provider         = "ECS"
+          version          = "1"
+          action_type_id   = "DeployToStaging"
+          run_order        = 1
+          input_artifacts  = ["build_output"]
+          output_artifacts = []
+          configuration = {
+            ClusterName = "${data.aws_ecs_cluster.carshub_ecs_staging_us_east_1.cluster_name}"
+            ServiceName = "${data.aws_ecs_service.carshub_ecs_service_backend_staging_us_east_1.service_name}"
+            FileName    = "imagedefinitions.json"
+          }
+        }
+      ]
+    },
+    {
       name = "Approval"
       actions = [{
         name             = "ManualApproval"
@@ -463,27 +604,27 @@ module "carshub_backend_codepipeline" {
         input_artifacts  = []
         output_artifacts = []
         configuration = {
-          NotificationArn = "${module.carshub_alarm_notifications.topic_arn}"
+          NotificationArn = "${module.carshub_infra_alarm_notifications.topic_arn}"
           CustomData      = "Approve production deployment"
         }
       }]
     },
     {
-      name = "Deploy"
+      name = "Deploy To Prod"
       actions = [
         {
-          name             = "DeployToECS"
+          name             = "DeployToProd"
           category         = "Deploy"
           owner            = "AWS"
           provider         = "ECS"
           version          = "1"
-          action_type_id   = "DeployToECS"
+          action_type_id   = "DeployToProd"
           run_order        = 1
           input_artifacts  = ["build_output"]
           output_artifacts = []
           configuration = {
-            ClusterName = "${module.carshub_cluster.cluster_name}"
-            ServiceName = "${module.carshub_cluster.services["ecs-backend"].name}"
+            ClusterName = "${data.aws_ecs_cluster.carshub_ecs_prod_us_east_1.cluster_name}"
+            ServiceName = "${data.aws_ecs_service.carshub_ecs_service_backend_prod_us_east_1.service_name}"
             FileName    = "imagedefinitions.json"
           }
         }

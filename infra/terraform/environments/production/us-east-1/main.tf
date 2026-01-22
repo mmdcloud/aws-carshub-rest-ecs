@@ -1401,15 +1401,15 @@ module "carshub_cluster" {
             {
               name  = "DB_NAME"
               value = "${module.carshub_db.name}"
-            }            
+            }
           ]
           secrets = [
             {
-              name  = "UN"
+              name      = "UN"
               valueFrom = "${module.carshub_db_credentials.arn}:username::"
             },
             {
-              name  = "CREDS"
+              name      = "CREDS"
               valueFrom = "${module.carshub_db_credentials.arn}:password::"
             }
           ]
