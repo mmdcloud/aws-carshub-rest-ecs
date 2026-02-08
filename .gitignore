@@ -1,40 +1,38 @@
 src/frontend/.env
 src/backend/api/.env
 
-infra/terraform/environments/dev/us-east-1/terraform.*
+infra/terraform/environments/dev/us-east-1/terraform.tfstate*
 infra/terraform/environments/dev/us-east-1/.terraform*
 infra/terraform/environments/dev/us-east-1/backend-code
 infra/terraform/environments/dev/us-east-1/frontend-code
 infra/terraform/environments/dev/us-east-1/a.out
 
-infra/terraform/environments/dev/us-west-2/terraform.*
+infra/terraform/environments/dev/us-west-2/terraform.tfstate*
 infra/terraform/environments/dev/us-west-2/.terraform*
 infra/terraform/environments/dev/us-west-2/backend-code
 infra/terraform/environments/dev/us-west-2/frontend-code
 infra/terraform/environments/dev/us-west-2/a.out
 
-infra/terraform/environments/production/us-east-1/terraform.*
+infra/terraform/environments/production/us-east-1/terraform.tfstate*
 infra/terraform/environments/production/us-east-1/.terraform*
 infra/terraform/environments/production/us-east-1/a.out
 infra/terraform/environments/production/us-east-1/backend-code
 infra/terraform/environments/production/us-east-1/frontend-code
 
-infra/terraform/environments/production/us-west-2/terraform.*
+infra/terraform/environments/production/us-west-2/terraform.tfstate*
 infra/terraform/environments/production/us-west-2/.terraform*
 infra/terraform/environments/production/us-west-2/a.out
 infra/terraform/environments/production/us-west-2/backend-code
 infra/terraform/environments/production/us-west-2/frontend-code
 
-infra/terraform/environments/staging/us-east-1/terraform.*
+infra/terraform/environments/staging/us-east-1/terraform.tfstate*
 infra/terraform/environments/staging/us-east-1/.terraform*
 infra/terraform/environments/staging/us-east-1/a.out
 infra/terraform/environments/staging/us-east-1/backend-code
 infra/terraform/environments/staging/us-east-1/frontend-code
 
-infra/terraform/environments/staging/us-west-2/terraform.*
+infra/terraform/environments/staging/us-west-2/terraform.tfstate*
 infra/terraform/environments/staging/us-west-2/.terraform*
 infra/terraform/environments/staging/us-west-2/a.out
 infra/terraform/environments/staging/us-west-2/backend-code
 infra/terraform/environments/staging/us-west-2/frontend-code
-
-.gitignore
