@@ -5,14 +5,12 @@ data "vault_generic_secret" "rds" {
   path = "secret/rds"
 }
 
+data "aws_elb_service_account" "main" {}
+
 data "aws_caller_identity" "current" {}
 
 data "aws_ssm_parameter" "ecs_optimized_ami" {
   name = "/aws/service/ecs/optimized-ami/amazon-linux-2023/recommended"
-}
-
-data "aws_ssm_parameter" "fluentbit" {
-  name = "/aws/service/aws-for-fluent-bit/stable"
 }
 
 # -----------------------------------------------------------------------------------------
@@ -25,7 +23,7 @@ module "carshub_vpc" {
   azs                     = var.azs
   public_subnets          = var.public_subnets
   private_subnets         = var.private_subnets
-  database_subnets = var.database_subnets
+  database_subnets        = var.database_subnets
   enable_dns_hostnames    = true
   enable_dns_support      = true
   create_igw              = true
@@ -35,7 +33,7 @@ module "carshub_vpc" {
   one_nat_gateway_per_az  = true
   tags = {
     Environment = "${var.env}"
-    Project     = "carshub"
+    Project     = var.project
   }
 }
 
@@ -64,17 +62,29 @@ module "carshub_frontend_lb_sg" {
   ]
   egress_rules = [
     {
-      description = "Allow all outbound traffic"
-      from_port   = 0
-      to_port     = 0
-      protocol    = "-1"
-      cidr_blocks = ["0.0.0.0/0"]
+      description     = "Allow outbound traffic to al"
+      from_port       = 0
+      to_port         = 0
+      protocol        = "-1"
+      cidr_blocks     = ["0.0.0.0/0"]
+      security_groups = []
     }
   ]
   tags = {
-    Name = "carshub-frontend-lb-sg-${var.env}-${var.region}"
+    Environment = "${var.env}"
+    Project     = var.project
   }
 }
+
+# resource "aws_security_group_rule" "carshub_frontend_lb_sg_egress" {
+#   type                     = "egress"
+#   from_port                = 80
+#   to_port                  = 80
+#   protocol                 = "tcp"
+#   cidr_blocks              = []
+#   source_security_group_id = module.carshub_ecs_backend_sg.id
+#   security_group_id        = module.carshub_frontend_lb_sg.id
+# }
 
 module "carshub_backend_lb_sg" {
   source = "../../../modules/security-groups"
@@ -86,35 +96,47 @@ module "carshub_backend_lb_sg" {
       from_port       = 80
       to_port         = 80
       protocol        = "tcp"
-      security_groups = []
-      cidr_blocks     = ["0.0.0.0/0"]
+      security_groups = [module.carshub_frontend_lb_sg.id]
+      cidr_blocks     = []
     },
     {
       description     = "HTTPS Traffic"
       from_port       = 443
       to_port         = 443
       protocol        = "tcp"
-      security_groups = []
-      cidr_blocks     = ["0.0.0.0/0"]
+      security_groups = [module.carshub_frontend_lb_sg.id]
+      cidr_blocks     = []
     }
   ]
   egress_rules = [
     {
-      description = "Allow all outbound traffic"
-      from_port   = 0
-      to_port     = 0
-      protocol    = "-1"
-      cidr_blocks = ["0.0.0.0/0"]
+      description     = "Allow outbound traffic to al"
+      from_port       = 0
+      to_port         = 0
+      protocol        = "-1"
+      cidr_blocks     = ["0.0.0.0/0"]
+      security_groups = []
     }
   ]
   tags = {
-    Name = "carshub-backend-lb-sg-${var.env}-${var.region}"
+    Environment = "${var.env}"
+    Project     = var.project
   }
 }
 
+# resource "aws_security_group_rule" "carshub_backend_lb_sg_egress" {
+#   type                     = "egress"
+#   from_port                = 80
+#   to_port                  = 80
+#   protocol                 = "tcp"
+#   cidr_blocks              = []
+#   source_security_group_id = module.carshub_ecs_backend_sg.id
+#   security_group_id        = module.carshub_backend_lb_sg.id
+# }
+
 module "carshub_ecs_frontend_sg" {
   source = "../../../modules/security-groups"
-  name   = "carshub-ecs-frontend-sg-${var.env}-${var.region}"
+  name   = "carshub-ecs_frontend-sg-${var.env}-${var.region}"
   vpc_id = module.carshub_vpc.vpc_id
   ingress_rules = [
     {
@@ -128,25 +150,55 @@ module "carshub_ecs_frontend_sg" {
   ]
   egress_rules = [
     {
-      description = "Allow all outbound traffic"
-      from_port   = 0
-      to_port     = 0
-      protocol    = "-1"
-      cidr_blocks = ["0.0.0.0/0"]
+      description     = "Allow outbound traffic to al"
+      from_port       = 0
+      to_port         = 0
+      protocol        = "-1"
+      cidr_blocks     = ["0.0.0.0/0"]
+      security_groups = []
     }
   ]
   tags = {
-    Name = "carshub-ecs-frontend-sg-${var.env}-${var.region}"
+    Environment = "${var.env}"
+    Project     = var.project
   }
 }
 
+# resource "aws_security_group_rule" "carshub_ecs_frontend_sg_egress_https" {
+#   type                     = "egress"
+#   from_port                = 443
+#   to_port                  = 443
+#   protocol                 = "tcp"
+#   cidr_blocks              = []
+#   source_security_group_id = module.carshub_backend_lb_sg.id
+#   security_group_id        = module.carshub_ecs_frontend_sg.id
+# }
+
+# resource "aws_security_group_rule" "carshub_ecs_frontend_sg_egress_https_to_internet" {
+#   type              = "egress"
+#   from_port         = 443
+#   to_port           = 443
+#   protocol          = "tcp"
+#   cidr_blocks       = ["0.0.0.0/0"]
+#   security_group_id = module.carshub_ecs_frontend_sg.id
+# }
+
+# resource "aws_security_group_rule" "carshub_ecs_frontend_sg_egress_to_internet" {
+#   type              = "egress"
+#   from_port         = 80
+#   to_port           = 80
+#   protocol          = "tcp"
+#   cidr_blocks       = ["0.0.0.0/0"]
+#   security_group_id = module.carshub_ecs_frontend_sg.id
+# }
+
 module "carshub_ecs_backend_sg" {
   source = "../../../modules/security-groups"
-  name   = "carshub-ecs-backend-sg-${var.env}-${var.region}"
+  name   = "carshub-ecs_backend-sg-${var.env}-${var.region}"
   vpc_id = module.carshub_vpc.vpc_id
   ingress_rules = [
     {
-      description     = "ECS Backend Traffic"
+      description     = "Traffic from Backend ALB"
       from_port       = 80
       to_port         = 80
       protocol        = "tcp"
@@ -156,15 +208,77 @@ module "carshub_ecs_backend_sg" {
   ]
   egress_rules = [
     {
-      description = "Allow all outbound traffic"
-      from_port   = 0
-      to_port     = 0
-      protocol    = "-1"
-      cidr_blocks = ["0.0.0.0/0"]
+      description     = "Allow outbound traffic to al"
+      from_port       = 0
+      to_port         = 0
+      protocol        = "-1"
+      cidr_blocks     = ["0.0.0.0/0"]
+      security_groups = []
     }
   ]
   tags = {
-    Name = "carshub-ecs-backend-sg-${var.env}-${var.region}"
+    Environment = "${var.env}"
+    Project     = var.project
+  }
+}
+
+# resource "aws_security_group_rule" "carshub_backend_sg_egress_https" {
+#   type                     = "egress"
+#   from_port                = 3306
+#   to_port                  = 3306
+#   protocol                 = "tcp"
+#   cidr_blocks              = []
+#   source_security_group_id = module.carshub_rds_sg.id
+#   security_group_id        = module.carshub_ecs_backend_sg.id
+# }
+
+# resource "aws_security_group_rule" "carshub_backend_sg_egress_https_to_internet" {
+#   type              = "egress"
+#   from_port         = 443
+#   to_port           = 443
+#   protocol          = "tcp"
+#   cidr_blocks       = ["0.0.0.0/0"]
+#   security_group_id = module.carshub_ecs_backend_sg.id
+# }
+
+# resource "aws_security_group_rule" "carshub_backend_sg_egress_to_internet" {
+#   type              = "egress"
+#   from_port         = 80
+#   to_port           = 80
+#   protocol          = "tcp"
+#   cidr_blocks       = ["0.0.0.0/0"]
+#   security_group_id = module.carshub_ecs_backend_sg.id
+# }
+
+module "carshub_lambda_sg" {
+  source = "../../../modules/security-groups"
+  name   = "carshub-lambda-sg-${var.env}-${var.region}"
+  vpc_id = module.carshub_vpc.vpc_id
+
+  ingress_rules = []
+
+  egress_rules = [
+    {
+      description     = "MySQL to RDS"
+      from_port       = 3306
+      to_port         = 3306
+      protocol        = "tcp"
+      cidr_blocks     = []
+      security_groups = [module.carshub_rds_sg.id]
+    },
+    {
+      description     = "HTTPS to S3"
+      from_port       = 443
+      to_port         = 443
+      protocol        = "tcp"
+      cidr_blocks     = ["0.0.0.0/0"]
+      security_groups = []
+    }
+  ]
+
+  tags = {
+    Environment = var.env
+    Project     = var.project
   }
 }
 
@@ -174,40 +288,55 @@ module "carshub_rds_sg" {
   vpc_id = module.carshub_vpc.vpc_id
   ingress_rules = [
     {
-      description     = "RDS Traffic"
+      description     = "MySQL from Backend ECS only"
       from_port       = 3306
       to_port         = 3306
       protocol        = "tcp"
       security_groups = [module.carshub_ecs_backend_sg.id]
       cidr_blocks     = []
-    }
+    },
   ]
   egress_rules = [
     {
-      description = "Allow all outbound traffic"
-      from_port   = 0
-      to_port     = 0
-      protocol    = "-1"
-      cidr_blocks = ["0.0.0.0/0"]
+      description     = "Allow outbound traffic to al"
+      from_port       = 0
+      to_port         = 0
+      protocol        = "-1"
+      cidr_blocks     = ["0.0.0.0/0"]
+      security_groups = []
     }
   ]
   tags = {
-    Name = "carshub-rds-sg-${var.env}-${var.region}"
+    Environment = "${var.env}"
+    Project     = var.project
   }
 }
+
+# resource "aws_security_group_rule" "carshub_rds_sg_egress" {
+#   type                     = "ingress"
+#   from_port                = 3306
+#   to_port                  = 3306
+#   protocol                 = "tcp"
+#   cidr_blocks              = []
+#   source_security_group_id = module.carshub_lambda_sg.id
+#   security_group_id        = module.carshub_rds_sg.id
+# }
 
 # -----------------------------------------------------------------------------------------
 # Secrets Manager
 # -----------------------------------------------------------------------------------------
 module "carshub_db_credentials" {
   source                  = "../../../modules/secrets-manager"
-  name                    = "carshub-rds-secrets-${var.env}-${var.region}"
+  name                    = "carshub-rds-secret-${var.env}-${var.region}"
   description             = "Secret for storing RDS credentials"
   recovery_window_in_days = 0
   secret_string = jsonencode({
     username = tostring(data.vault_generic_secret.rds.data["username"])
     password = tostring(data.vault_generic_secret.rds.data["password"])
   })
+  tags = {
+    Environment = "${var.env}"
+  }
 }
 
 # -----------------------------------------------------------------------------------------
@@ -254,15 +383,17 @@ module "flow_logs_role" {
     EOF
 }
 
-resource "aws_cloudwatch_log_group" "carshub_flow_log_group" {
-  name              = "/aws/vpc/flow-logs/carshub-application-${var.env}-${var.region}"
+module "carshub_flow_log_group" {
+  source            = "../../../modules/cloudwatch/cloudwatch-log-group"
+  log_group_name    = "/aws/vpc/flow-logs/carshub-application-${var.env}-${var.region}"
+  skip_destroy      = false
   retention_in_days = 365
 }
 
 # Add VPC Flow Logs for security monitoring
 resource "aws_flow_log" "carshub_vpc_flow_log" {
   iam_role_arn    = module.flow_logs_role.arn
-  log_destination = aws_cloudwatch_log_group.carshub_flow_log_group.arn
+  log_destination = module.carshub_flow_log_group.arn
   traffic_type    = "ALL"
   vpc_id          = module.carshub_vpc.vpc_id
 }
@@ -270,6 +401,17 @@ resource "aws_flow_log" "carshub_vpc_flow_log" {
 # -----------------------------------------------------------------------------------------
 # ECR Module
 # -----------------------------------------------------------------------------------------
+
+# Uncomment only if KMS is needed
+
+# module "carshub_kms_ecr" {
+#   source = "../../../modules/kms"
+#   name = "carshub-kms-ecr-${var.env}-${var.region}"
+#   description             = "KMS key for ECR encryption"
+#   deletion_window_in_days = 30
+#   enable_key_rotation     = true
+# }
+
 module "carshub_frontend_container_registry" {
   source               = "../../../modules/ecr"
   force_delete         = true
@@ -277,6 +419,41 @@ module "carshub_frontend_container_registry" {
   image_tag_mutability = "IMMUTABLE"
   bash_command         = "bash ${path.cwd}/../../../../../src/frontend/artifact_push.sh carshub-frontend-${var.env}-${var.region} ${var.region} http://${module.carshub_backend_lb.dns_name} ${module.carshub_media_cloudfront_distribution.domain_name}"
   name                 = "carshub-frontend-${var.env}-${var.region}"
+  lifecycle_policy = jsonencode({
+    rules = [
+      {
+        rulePriority = 1
+        description  = "Keep last 10 images"
+        selection = {
+          tagStatus     = "tagged"
+          tagPrefixList = ["v"]
+          countType     = "imageCountMoreThan"
+          countNumber   = 10
+        }
+        action = {
+          type = "expire"
+        }
+      },
+      {
+        rulePriority = 2
+        description  = "Delete untagged images older than 7 days"
+        selection = {
+          tagStatus   = "untagged"
+          countType   = "sinceImagePushed"
+          countUnit   = "days"
+          countNumber = 7
+        }
+        action = {
+          type = "expire"
+        }
+      }
+    ]
+  })
+
+  # Uncomment only if KMS is needed
+
+  # encryption_type = "KMS"
+  # kms_key         = module.carshub_kms_ecr.key_id
 }
 
 module "carshub_backend_container_registry" {
@@ -286,6 +463,41 @@ module "carshub_backend_container_registry" {
   image_tag_mutability = "IMMUTABLE"
   bash_command         = "bash ${path.cwd}/../../../../../src/backend/api/artifact_push.sh carshub-backend-${var.env}-${var.region} ${var.region}"
   name                 = "carshub-backend-${var.env}-${var.region}"
+  lifecycle_policy = jsonencode({
+    rules = [
+      {
+        rulePriority = 1
+        description  = "Keep last 10 images"
+        selection = {
+          tagStatus     = "tagged"
+          tagPrefixList = ["v"]
+          countType     = "imageCountMoreThan"
+          countNumber   = 10
+        }
+        action = {
+          type = "expire"
+        }
+      },
+      {
+        rulePriority = 2
+        description  = "Delete untagged images older than 7 days"
+        selection = {
+          tagStatus   = "untagged"
+          countType   = "sinceImagePushed"
+          countUnit   = "days"
+          countNumber = 7
+        }
+        action = {
+          type = "expire"
+        }
+      }
+    ]
+  })
+
+  # Uncomment only if KMS is needed
+
+  # encryption_type = "KMS"
+  # kms_key         = module.carshub_kms_ecr.key_id
 }
 
 # -----------------------------------------------------------------------------------------
@@ -312,47 +524,118 @@ resource "aws_iam_role_policy_attachment" "rds_monitoring_policy" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonRDSEnhancedMonitoringRole"
 }
 
+# Uncomment only if KMS is needed
+
+# module "carshub_kms_rds" {
+#   source = "../../../modules/kms"
+#   name = "carshub-kms-rds-${var.env}-${var.region}"
+#   description             = "KMS key for ECR encryption"
+#   deletion_window_in_days = 30
+#   enable_key_rotation     = true
+# }
+
 module "carshub_db" {
-  source                                = "../../../modules/rds"
-  db_name                               = "carshubdb${var.env}useast1"
-  allocated_storage                     = 100
-  storage_type                          = "gp3"
-  engine                                = "mysql"
-  engine_version                        = "8.0.40"
-  instance_class                        = "db.r6g.large"
-  multi_az                              = true
-  username                              = tostring(data.vault_generic_secret.rds.data["username"])
-  password                              = tostring(data.vault_generic_secret.rds.data["password"])
-  subnet_group_name                     = "carshub-rds-subnet-group-${var.env}-${var.region}"
+  source     = "../../../modules/rds"
+  db_name    = "carshubdb${var.env}useast1"
+  identifier = "carshub-db-${var.env}"
+
+  allocated_storage     = 100
+  max_allocated_storage = 500
+  storage_type          = "gp3"
+  storage_encrypted     = true
+  # kms_key_id                            = module.carshub_kms_rds.arn 
+  # iops               = 3000
+  # storage_throughput = 125
+
+  engine                     = "mysql"
+  engine_version             = "8.0.40"
+  instance_class             = "db.r6g.large"
+  auto_minor_version_upgrade = true
+
+  deletion_protection = false
+
+  multi_az = true
+
+  username                            = tostring(data.vault_generic_secret.rds.data["username"])
+  password                            = tostring(data.vault_generic_secret.rds.data["password"])
+  iam_database_authentication_enabled = true
+
+  subnet_group_name      = "carshub-rds-subnet-group-${var.env}-${var.region}"
+  subnet_group_ids       = module.carshub_vpc.database_subnets
+  vpc_security_group_ids = [module.carshub_rds_sg.id]
+  publicly_accessible    = false
+
+  backup_retention_period   = 35
+  backup_window             = "03:00-06:00"
+  copy_tags_to_snapshot     = true
+  skip_final_snapshot       = true
+  final_snapshot_identifier = "carshub-db-final-snapshot-${var.env}"
+
+  maintenance_window = "sun:08:00-sun:10:00"
+
   enabled_cloudwatch_logs_exports       = ["audit", "error", "general", "slowquery"]
-  backup_retention_period               = 35
-  backup_window                         = "03:00-06:00"
-  subnet_group_ids                      = module.carshub_vpc.private_subnets
-  vpc_security_group_ids                = [module.carshub_rds_sg.id]
-  publicly_accessible                   = false
-  deletion_protection                   = false
-  skip_final_snapshot                   = true
-  max_allocated_storage                 = 500
   performance_insights_enabled          = true
   performance_insights_retention_period = 7
   monitoring_interval                   = 60
-  monitoring_role_arn                   = aws_iam_role.rds_monitoring_role.arn
-  parameter_group_name                  = "carshub-db-pg-${var.env}-${var.region}"
-  parameter_group_family                = "mysql8.0"
+  # performance_insights_kms_key_id       = module.carshub_kms_rds.arn
+  monitoring_role_arn = aws_iam_role.rds_monitoring_role.arn
+
+  parameter_group_name   = "carshub-db-pg-${var.env}-${var.region}"
+  parameter_group_family = "mysql8.0"
   parameters = [
     {
       name  = "max_connections"
       value = "1000"
     },
-    {
-      name  = "innodb_buffer_pool_size"
-      value = "{DBInstanceClassMemory*3/4}"
-    },
+    # {
+    #   name  = "innodb_buffer_pool_size"
+    #   value = "{DBInstanceClassMemory*3/4}"
+    # },
     {
       name  = "slow_query_log"
       value = "1"
-    }
+    },
+    # {
+    #   name  = "long_query_time"
+    #   value = "2"
+    # },
+    # {
+    #   name  = "log_queries_not_using_indexes"
+    #   value = "1"
+    # },
+    # {
+    #   name  = "innodb_flush_log_at_trx_commit"
+    #   value = "1"
+    # },
+    # {
+    #   name  = "innodb_log_file_size"
+    #   value = "536870912"
+    # },
+    # {
+    #   name  = "max_allowed_packet"
+    #   value = "67108864"
+    # },
+    # {
+    #   name  = "character_set_server"
+    #   value = "utf8mb4"
+    # },
+    # {
+    #   name  = "collation_server"
+    #   value = "utf8mb4_unicode_ci"
+    # },
+    # {
+    #   name  = "tmp_table_size"
+    #   value = "67108864"
+    # },
+    # {
+    #   name  = "max_heap_table_size"
+    #   value = "67108864"
+    # }
   ]
+  tags = {
+    Environment = "${var.env}"
+    Project     = var.project
+  }
 }
 
 # -----------------------------------------------------------------------------------------
@@ -406,8 +689,6 @@ module "carshub_media_bucket" {
       }
     ]
   })
-  # Note: Lifecycle policies should be configured in the S3 module
-  # or as separate aws_s3_bucket_lifecycle_configuration resources
   force_destroy = true
   bucket_notification = {
     queue = [
@@ -417,6 +698,10 @@ module "carshub_media_bucket" {
       }
     ]
     lambda_function = []
+  }
+  tags = {
+    Environment = "${var.env}"
+    Project     = var.project
   }
 }
 
@@ -440,13 +725,48 @@ module "carshub_media_update_function_code" {
   ]
   versioning_enabled = "Enabled"
   force_destroy      = true
+  tags = {
+    Environment = "${var.env}"
+    Project     = var.project
+  }
 }
 
 module "carshub_frontend_lb_logs" {
-  source        = "../../../modules/s3"
-  bucket_name   = "carshub-frontend-lb-logs-${var.env}-${var.region}"
-  objects       = []
-  bucket_policy = ""
+  source      = "../../../modules/s3"
+  bucket_name = "carshub-frontend-lb-logs-${var.env}-${var.region}"
+  objects     = []
+  bucket_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AWSLogDeliveryWrite"
+        Effect = "Allow"
+        Principal = {
+          Service = "logging.s3.amazonaws.com"
+        }
+        Action   = "s3:PutObject"
+        Resource = "arn:aws:s3:::carshub-frontend-lb-logs-${var.env}-${var.region}/*"
+      },
+      {
+        Sid    = "AWSLogDeliveryAclCheck"
+        Effect = "Allow"
+        Principal = {
+          Service = "logging.s3.amazonaws.com"
+        }
+        Action   = "s3:GetBucketAcl"
+        Resource = "arn:aws:s3:::carshub-frontend-lb-logs-${var.env}-${var.region}"
+      },
+      {
+        Sid    = "AWSELBAccountWrite"
+        Effect = "Allow"
+        Principal = {
+          AWS = "arn:aws:iam::${data.aws_elb_service_account.main.id}:root"
+        }
+        Action   = "s3:PutObject"
+        Resource = "arn:aws:s3:::carshub-frontend-lb-logs-${var.env}-${var.region}/*"
+      }
+    ]
+  })
   cors = [
     {
       allowed_headers = ["*"]
@@ -463,13 +783,48 @@ module "carshub_frontend_lb_logs" {
   ]
   versioning_enabled = "Enabled"
   force_destroy      = true
+  tags = {
+    Environment = "${var.env}"
+    Project     = var.project
+  }
 }
 
 module "carshub_backend_lb_logs" {
-  source        = "../../../modules/s3"
-  bucket_name   = "carshub-backend-lb-logs-${var.env}-${var.region}"
-  objects       = []
-  bucket_policy = ""
+  source      = "../../../modules/s3"
+  bucket_name = "carshub-backend-lb-logs-${var.env}-${var.region}"
+  objects     = []
+  bucket_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AWSLogDeliveryWrite"
+        Effect = "Allow"
+        Principal = {
+          Service = "logging.s3.amazonaws.com"
+        }
+        Action   = "s3:PutObject"
+        Resource = "arn:aws:s3:::carshub-backend-lb-logs-${var.env}-${var.region}/*"
+      },
+      {
+        Sid    = "AWSLogDeliveryAclCheck"
+        Effect = "Allow"
+        Principal = {
+          Service = "logging.s3.amazonaws.com"
+        }
+        Action   = "s3:GetBucketAcl"
+        Resource = "arn:aws:s3:::carshub-backend-lb-logs-${var.env}-${var.region}"
+      },
+      {
+        Sid    = "AWSELBAccountWrite"
+        Effect = "Allow"
+        Principal = {
+          AWS = "arn:aws:iam::${data.aws_elb_service_account.main.id}:root"
+        }
+        Action   = "s3:PutObject"
+        Resource = "arn:aws:s3:::carshub-backend-lb-logs-${var.env}-${var.region}/*"
+      }
+    ]
+  })
   cors = [
     {
       allowed_headers = ["*"]
@@ -486,6 +841,10 @@ module "carshub_backend_lb_logs" {
   ]
   versioning_enabled = "Enabled"
   force_destroy      = true
+  tags = {
+    Environment = "${var.env}"
+    Project     = var.project
+  }
 }
 
 # -----------------------------------------------------------------------------------------
@@ -505,6 +864,10 @@ module "carshub_media_update_function_code_signed" {
       max_age_seconds = 3000
     }
   ]
+  tags = {
+    Environment = "${var.env}"
+    Project     = var.project
+  }
 }
 
 # Signing profile
@@ -513,7 +876,7 @@ module "carshub_signing_profile" {
   platform_id                      = "AWSLambda-SHA384-ECDSA"
   signature_validity_value         = 5
   signature_validity_type          = "YEARS"
-  ignore_signing_job_failure       = true
+  ignore_signing_job_failure       = false
   untrusted_artifact_on_deployment = "Warn"
   s3_bucket_key                    = "lambda.zip"
   s3_bucket_source                 = module.carshub_media_update_function_code.bucket
@@ -534,16 +897,14 @@ resource "aws_lambda_event_source_mapping" "sqs_event_trigger" {
 
 # SQS Queue for buffering S3 events
 module "carshub_media_events_queue" {
-  source                        = "../../../modules/sqs"
-  queue_name                    = "carshub-media-events-queue-${var.env}-${var.region}"
-  delay_seconds                 = 0
-  maxReceiveCount               = 3
-  dlq_message_retention_seconds = 86400
-  dlq_name                      = "carshub-media-events-dlq-${var.env}-${var.region}"
-  max_message_size              = 262144
-  message_retention_seconds     = 345600
-  visibility_timeout_seconds    = 180
-  receive_wait_time_seconds     = 20
+  source                     = "../../../modules/sqs"
+  queue_name                 = "carshub-media-events-queue-${var.env}-${var.region}"
+  delay_seconds              = 0
+  maxReceiveCount            = 3
+  max_message_size           = 262144
+  message_retention_seconds  = 345600
+  visibility_timeout_seconds = 180
+  receive_wait_time_seconds  = 20
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
@@ -560,6 +921,26 @@ module "carshub_media_events_queue" {
       }
     ]
   })
+  tags = {
+    Environment = "${var.env}"
+    Project     = var.project
+  }
+}
+
+module "carshub_media_events_dlq" {
+  source                     = "../../../modules/sqs"
+  queue_name                 = "carshub-media-events-dlq-${var.env}-${var.region}"
+  delay_seconds              = 0
+  maxReceiveCount            = 3
+  max_message_size           = 262144
+  message_retention_seconds  = 345600
+  visibility_timeout_seconds = 180
+  receive_wait_time_seconds  = 20
+  policy                     = ""
+  tags = {
+    Environment = "${var.env}"
+    Project     = var.project
+  }
 }
 
 # -----------------------------------------------------------------------------------------
@@ -617,6 +998,22 @@ module "carshub_media_update_function_iam_role" {
               ],
               "Effect"   : "Allow",
               "Resource" : "${module.carshub_media_events_queue.arn}"
+            },
+            {
+              "Action": [
+                "sqs:*"
+              ],
+              "Effect"   : "Allow",
+              "Resource" : "${module.carshub_media_events_dlq.arn}"
+            },
+            {
+              "Action": [
+                "ec2:CreateNetworkInterface",
+                "ec2:DescribeNetworkInterfaces",
+                "ec2:DeleteNetworkInterface"
+              ],
+              "Effect"   : "Allow",
+              "Resource" : "*"
             }
         ]
     }
@@ -636,9 +1033,16 @@ module "carshub_media_update_function" {
   function_name = "carshub-media-update-${var.env}-${var.region}"
   role_arn      = module.carshub_media_update_function_iam_role.arn
   permissions   = []
+  vpc_config = {
+    security_group_ids = [module.carshub_lambda_sg.id]
+    subnet_ids         = module.carshub_vpc.private_subnets
+  }
+  dead_letter_config = {
+    target_arn = module.carshub_media_events_dlq.arn
+  }
   env_variables = {
     SECRET_NAME = module.carshub_db_credentials.name
-    DB_HOST     = tostring(split(":", module.carshub_db.endpoint)[0])
+    DB_HOST     = module.carshub_db.address
     DB_NAME     = var.db_name
     REGION      = var.region
   }
@@ -648,6 +1052,10 @@ module "carshub_media_update_function" {
   s3_key                  = "lambda.zip"
   layers                  = [aws_lambda_layer_version.python_layer.arn]
   code_signing_config_arn = module.carshub_signing_profile.config_arn
+  tags = {
+    Environment = "${var.env}"
+    Project     = var.project
+  }
 }
 
 # -----------------------------------------------------------------------------------------
@@ -679,21 +1087,25 @@ module "carshub_media_cloudfront_distribution" {
   min_ttl                        = 0
   default_ttl                    = 86400
   max_ttl                        = 31536000
-  price_class                    = "PriceClass_100"
+  price_class                    = "PriceClass_200"
   forward_cookies                = "all"
   cloudfront_default_certificate = true
   geo_restriction_type           = "none"
   query_string                   = true
+  tags = {
+    Environment = "${var.env}"
+    Project     = var.project
+  }
 }
 
 # -----------------------------------------------------------------------------------------
 # Load Balancer Configuration
 # -----------------------------------------------------------------------------------------
 module "carshub_frontend_lb" {
-  source             = "terraform-aws-modules/alb/aws"
-  name               = "frontend-lb-${var.env}-${var.region}"
-  load_balancer_type = "application"
-  # vpc_id                     = module.carshub_vpc.vpc_id
+  source                     = "terraform-aws-modules/alb/aws"
+  name                       = "frontend-lb-${var.env}-${var.region}"
+  load_balancer_type         = "application"
+  vpc_id                     = module.carshub_vpc.vpc_id
   subnets                    = module.carshub_vpc.public_subnets
   enable_deletion_protection = false
   drop_invalid_header_fields = true
@@ -733,7 +1145,8 @@ module "carshub_frontend_lb" {
     }
   }
   tags = {
-    Project = "carshub"
+    Project     = var.project
+    Environment = var.env
   }
   depends_on = [module.carshub_vpc]
 }
@@ -782,7 +1195,8 @@ module "carshub_backend_lb" {
     }
   }
   tags = {
-    Project = "carshub"
+    Project     = var.project
+    Environment = var.env
   }
   depends_on = [module.carshub_vpc]
 }
@@ -847,17 +1261,30 @@ resource "aws_iam_role_policy_attachment" "ecs_task_xray" {
   policy_arn = "arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess"
 }
 
+module "carshub_frontend_ecs_log_group" {
+  source            = "../../../modules/cloudwatch/cloudwatch-log-group"
+  log_group_name    = "/aws/ecs/carshub-frontend-ecs-${var.env}-${var.region}"
+  skip_destroy      = false
+  retention_in_days = 90
+}
+
+module "carshub_backend_ecs_log_group" {
+  source            = "../../../modules/cloudwatch/cloudwatch-log-group"
+  log_group_name    = "/aws/ecs/carshub-backend-ecs-${var.env}-${var.region}"
+  skip_destroy      = false
+  retention_in_days = 90
+}
+
 module "carshub_cluster" {
   source       = "terraform-aws-modules/ecs/aws"
   cluster_name = "carshub-ecs-cluster"
   services = {
-    ecs-frontend = {
+    ecs_frontend = {
       cpu                    = 2048
       memory                 = 4096
       task_exec_iam_role_arn = module.ecs_task_execution_role.arn
       iam_role_arn           = module.ecs_task_execution_role.arn
       desired_count          = 2
-      launch_type            = "FARGATE"
       assign_public_ip       = false
       deployment_controller = {
         type = "ECS"
@@ -871,29 +1298,11 @@ module "carshub_cluster" {
       scheduling_strategy      = "REPLICA"
       requires_compatibilities = ["FARGATE"]
       container_definitions = {
-        fluent-bit = {
-          cpu       = 512
-          memory    = 1024
-          essential = true
-          image     = nonsensitive(data.aws_ssm_parameter.fluentbit.value)
-          user      = "0"
-          firelensConfiguration = {
-            type = "fluentbit"
-          }
-          memoryReservation                      = 50
-          cloudwatch_log_group_retention_in_days = 30
-        }
         ecs_frontend = {
           cpu       = 1024
           memory    = 2048
           essential = true
           image     = "${module.carshub_frontend_container_registry.repository_url}:latest"
-          placementStrategy = [
-            {
-              type  = "spread",
-              field = "attribute:ecs.availability-zone"
-            }
-          ]
           healthCheck = {
             command = ["CMD-SHELL", "curl -f http://localhost:3000/auth/signin || exit 1"]
           }
@@ -906,7 +1315,7 @@ module "carshub_cluster" {
           ]
           portMappings = [
             {
-              name          = "ecs-frontend"
+              name          = "ecs_frontend"
               containerPort = 3000
               hostPort      = 3000
               protocol      = "tcp"
@@ -919,18 +1328,14 @@ module "carshub_cluster" {
             }
           ]
           readonlyRootFilesystem = false
-          dependsOn = [{
-            containerName = "fluent-bit"
-            condition     = "START"
-          }]
-          # enable_cloudwatch_logging = false
           logConfiguration = {
-            logDriver = "awsfirelens"
-            options = {
-              Name                    = "firehose"
-              region                  = var.region
-              delivery_stream         = "carshub-ecs-frontend-stream"
-              log-driver-buffer-limit = "2097152"
+            logConfiguration = {
+              logDriver = "awslogs"
+              options = {
+                awslogs-group         = module.carshub_frontend_ecs_log_group.name
+                awslogs-region        = var.region
+                awslogs-stream-prefix = "carshub-frontend"
+              }
             }
           }
           memoryReservation = 100
@@ -944,22 +1349,22 @@ module "carshub_cluster" {
       load_balancer = {
         service = {
           target_group_arn = module.carshub_frontend_lb.target_groups["carshub_frontend_lb_target_group"].arn
-          container_name   = "ecs-frontend"
+          container_name   = "ecs_frontend"
           container_port   = 3000
         }
       }
       subnet_ids                    = module.carshub_vpc.private_subnets
       vpc_id                        = module.carshub_vpc.vpc_id
+      security_group_ids            = [module.carshub_ecs_frontend_sg.id]
       availability_zone_rebalancing = "ENABLED"
     }
 
-    ecs-backend = {
+    ecs_backend = {
       cpu                    = 2048
       memory                 = 4096
       task_exec_iam_role_arn = module.ecs_task_execution_role.arn
       iam_role_arn           = module.ecs_task_execution_role.arn
       desired_count          = 2
-      launch_type            = "FARGATE"
       assign_public_ip       = false
       deployment_controller = {
         type = "ECS"
@@ -973,29 +1378,11 @@ module "carshub_cluster" {
       scheduling_strategy      = "REPLICA"
       requires_compatibilities = ["FARGATE"]
       container_definitions = {
-        fluent-bit = {
-          cpu       = 512
-          memory    = 1024
-          essential = true
-          image     = nonsensitive(data.aws_ssm_parameter.fluentbit.value)
-          user      = "0"
-          firelensConfiguration = {
-            type = "fluentbit"
-          }
-          memoryReservation                      = 50
-          cloudwatch_log_group_retention_in_days = 30
-        }
         ecs_backend = {
           cpu       = 1024
           memory    = 2048
           essential = true
           image     = "${module.carshub_backend_container_registry.repository_url}:latest"
-          placementStrategy = [
-            {
-              type  = "spread",
-              field = "attribute:ecs.availability-zone"
-            }
-          ]
           healthCheck = {
             command = ["CMD-SHELL", "curl -f http://localhost:80 || exit 1"]
           }
@@ -1009,33 +1396,38 @@ module "carshub_cluster" {
           environment = [
             {
               name  = "DB_PATH"
-              value = "${tostring(split(":", module.carshub_db.endpoint)[0])}"
+              value = "${module.carshub_db.address}"
             },
             {
               name  = "DB_NAME"
               value = "${module.carshub_db.name}"
             }
           ]
+          secrets = [
+            {
+              name      = "UN"
+              valueFrom = "${module.carshub_db_credentials.arn}:username::"
+            },
+            {
+              name      = "CREDS"
+              valueFrom = "${module.carshub_db_credentials.arn}:password::"
+            }
+          ]
           portMappings = [
             {
-              name          = "ecs-backend"
+              name          = "ecs_backend"
               containerPort = 80
               hostPort      = 80
               protocol      = "tcp"
             }
           ]
           readOnlyRootFilesystem = false
-          dependsOn = [{
-            containerName = "fluent-bit"
-            condition     = "START"
-          }]
           logConfiguration = {
-            logDriver = "awsfirelens"
+            logDriver = "awslogs"
             options = {
-              Name                    = "firehose"
-              region                  = var.region
-              delivery_stream         = "carshub-ecs-backend-stream"
-              log-driver-buffer-limit = "2097152"
+              awslogs-group         = module.carshub_backend_ecs_log_group.name
+              awslogs-region        = var.region
+              awslogs-stream-prefix = "carshub-backend"
             }
           }
           memoryReservation = 100
@@ -1049,12 +1441,13 @@ module "carshub_cluster" {
       load_balancer = {
         service = {
           target_group_arn = module.carshub_backend_lb.target_groups["carshub_backend_lb_target_group"].arn
-          container_name   = "ecs-backend"
+          container_name   = "ecs_backend"
           container_port   = 80
         }
       }
       subnet_ids                    = module.carshub_vpc.private_subnets
       vpc_id                        = module.carshub_vpc.vpc_id
+      security_group_ids            = [module.carshub_ecs_backend_sg.id]
       availability_zone_rebalancing = "ENABLED"
     }
   }
@@ -1062,57 +1455,65 @@ module "carshub_cluster" {
 
 # Module for App Autoscaling Policy
 module "carshub_frontend_app_autoscaling_policy" {
-  source                    = "../../../modules/autoscaling"
-  min_capacity              = 2
-  max_capacity              = 10
-  resource_id        = "service/${module.carshub_cluster.cluster_name}/${module.carshub_cluster.services["ecs-frontend"].name}"
+  source             = "../../../modules/autoscaling"
+  min_capacity       = 2
+  max_capacity       = 10
+  resource_id        = "service/${module.carshub_cluster.cluster_name}/${module.carshub_cluster.services["ecs_frontend"].name}"
   scalable_dimension = "ecs:service:DesiredCount"
   service_namespace  = "ecs"
   policies = [
     {
-      name                    = "carshub-frontend-autoscaling-policy-${var.env}-${var.region}"
-      adjustment_type         = "ChangeInCapacity"
-      cooldown                = 60
-      metric_aggregation_type = "Average"
-      steps = [
-        {
-          metric_interval_lower_bound = 0
-          metric_interval_upper_bound = 20
-          scaling_adjustment          = 1
-        },
-        {
-          metric_interval_lower_bound = 20
-          scaling_adjustment          = 2
-        }
-      ]
+      name        = "worker-scale-up"
+      policy_type = "StepScaling"
+      step_scaling_policy_configuration = {
+        adjustment_type         = "ChangeInCapacity"
+        cooldown                = 60
+        metric_aggregation_type = "Average"
+        # Remove min_adjustment_magnitude - it's invalid with ChangeInCapacity
+        step_adjustment = [
+          {
+            metric_interval_lower_bound = 0
+            metric_interval_upper_bound = 20
+            scaling_adjustment          = 1
+          },
+          {
+            metric_interval_lower_bound = 20
+            scaling_adjustment          = 2
+          }
+        ]
+      }
     }
   ]
 }
 
 module "carshub_backend_app_autoscaling_policy" {
-  source                    = "../../../modules/autoscaling"
-  min_capacity              = 2
-  max_capacity              = 10
-  resource_id        = "service/${module.carshub_cluster.cluster_name}/${module.carshub_cluster.services["ecs-frontend"].name}"
+  source             = "../../../modules/autoscaling"
+  min_capacity       = 2
+  max_capacity       = 10
+  resource_id        = "service/${module.carshub_cluster.cluster_name}/${module.carshub_cluster.services["ecs_backend"].name}"
   scalable_dimension = "ecs:service:DesiredCount"
   service_namespace  = "ecs"
   policies = [
     {
-      name                    = "carshub-backend-autoscaling-policy-${var.env}-${var.region}"
-      adjustment_type         = "ChangeInCapacity"
-      cooldown                = 60
-      metric_aggregation_type = "Average"
-      steps = [
-        {
-          metric_interval_lower_bound = 0
-          metric_interval_upper_bound = 20
-          scaling_adjustment          = 1
-        },
-        {
-          metric_interval_lower_bound = 20
-          scaling_adjustment          = 2
-        }
-      ]
+      name        = "worker-scale-up"
+      policy_type = "StepScaling"
+      step_scaling_policy_configuration = {
+        adjustment_type         = "ChangeInCapacity"
+        cooldown                = 60
+        metric_aggregation_type = "Average"
+        # Remove min_adjustment_magnitude - it's invalid with ChangeInCapacity
+        step_adjustment = [
+          {
+            metric_interval_lower_bound = 0
+            metric_interval_upper_bound = 20
+            scaling_adjustment          = 1
+          },
+          {
+            metric_interval_lower_bound = 20
+            scaling_adjustment          = 2
+          }
+        ]
+      }
     }
   ]
 }
@@ -1134,7 +1535,7 @@ module "carshub_alarm_notifications" {
 # CPU Utilization Alarm
 module "carshub_frontend_ecs_service_high_cpu" {
   source              = "../../../modules/cloudwatch/cloudwatch-alarm"
-  alarm_name          = "${module.carshub_cluster.cluster_name}-${module.carshub_cluster.services["ecs-frontend"].name}-high-cpu-utilization-${var.env}-${var.region}"
+  alarm_name          = "${module.carshub_cluster.cluster_name}-${module.carshub_cluster.services["ecs_frontend"].name}-high-cpu-utilization-${var.env}-${var.region}"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = "2"
   metric_name         = "CPUUtilization"
@@ -1148,14 +1549,14 @@ module "carshub_frontend_ecs_service_high_cpu" {
 
   dimensions = {
     ClusterName = module.carshub_cluster.cluster_name
-    ServiceName = module.carshub_cluster.services["ecs-frontend"].name
+    ServiceName = module.carshub_cluster.services["ecs_frontend"].name
   }
 }
 
 # Memory Utilization Alarm
 module "carshub_frontend_ecs_service_high_memory" {
   source              = "../../../modules/cloudwatch/cloudwatch-alarm"
-  alarm_name          = "${module.carshub_cluster.cluster_name}-${module.carshub_cluster.services["ecs-frontend"].name}-high-memory-utilization-${var.env}-${var.region}"
+  alarm_name          = "${module.carshub_cluster.cluster_name}-${module.carshub_cluster.services["ecs_frontend"].name}-high-memory-utilization-${var.env}-${var.region}"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = "2"
   metric_name         = "MemoryUtilization"
@@ -1169,14 +1570,14 @@ module "carshub_frontend_ecs_service_high_memory" {
 
   dimensions = {
     ClusterName = module.carshub_cluster.cluster_name
-    ServiceName = module.carshub_cluster.services["ecs-frontend"].name
+    ServiceName = module.carshub_cluster.services["ecs_frontend"].name
   }
 }
 
 # Service Running Tasks Alarm - alerts if there are fewer than expected tasks
 module "carshub_frontend_ecs_service_running_tasks" {
   source              = "../../../modules/cloudwatch/cloudwatch-alarm"
-  alarm_name          = "${module.carshub_cluster.cluster_name}-${module.carshub_cluster.services["ecs-frontend"].name}-low-running-tasks-${var.env}-${var.region}"
+  alarm_name          = "${module.carshub_cluster.cluster_name}-${module.carshub_cluster.services["ecs_frontend"].name}-low-running-tasks-${var.env}-${var.region}"
   comparison_operator = "LessThanThreshold"
   evaluation_periods  = "1"
   metric_name         = "RunningTaskCount"
@@ -1190,14 +1591,14 @@ module "carshub_frontend_ecs_service_running_tasks" {
 
   dimensions = {
     ClusterName = module.carshub_cluster.cluster_name
-    ServiceName = module.carshub_cluster.services["ecs-frontend"].name
+    ServiceName = module.carshub_cluster.services["ecs_frontend"].name
   }
 }
 
 # Service Failed Deployment Alarm
 module "carshub_frontend_ecs_failed_deployments" {
   source              = "../../../modules/cloudwatch/cloudwatch-alarm"
-  alarm_name          = "${module.carshub_cluster.cluster_name}-${module.carshub_cluster.services["ecs-frontend"].name}-failed-deployments-${var.env}-${var.region}"
+  alarm_name          = "${module.carshub_cluster.cluster_name}-${module.carshub_cluster.services["ecs_frontend"].name}-failed-deployments-${var.env}-${var.region}"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = "1"
   metric_name         = "DeploymentFailures"
@@ -1211,14 +1612,14 @@ module "carshub_frontend_ecs_failed_deployments" {
 
   dimensions = {
     ClusterName = module.carshub_cluster.cluster_name
-    ServiceName = module.carshub_cluster.services["ecs-frontend"].name
+    ServiceName = module.carshub_cluster.services["ecs_frontend"].name
   }
 }
 
 # Target Response Time Alarm (if using ALB)
 module "carshub_frontend_ecs_alb_high_response_time" {
   source              = "../../../modules/cloudwatch/cloudwatch-alarm"
-  alarm_name          = "${module.carshub_cluster.cluster_name}-${module.carshub_cluster.services["ecs-frontend"].name}-high-response-time-${var.env}-${var.region}"
+  alarm_name          = "${module.carshub_cluster.cluster_name}-${module.carshub_cluster.services["ecs_frontend"].name}-high-response-time-${var.env}-${var.region}"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = "3"
   metric_name         = "TargetResponseTime"
@@ -1238,7 +1639,7 @@ module "carshub_frontend_ecs_alb_high_response_time" {
 # HTTP 5XX Error Rate Alarm (if using ALB)
 module "carshub_frontend_lb_high_5xx_errors" {
   source              = "../../../modules/cloudwatch/cloudwatch-alarm"
-  alarm_name          = "${module.carshub_cluster.cluster_name}-${module.carshub_cluster.services["ecs-frontend"].name}-high-5xx-errors-${var.env}-${var.region}"
+  alarm_name          = "${module.carshub_cluster.cluster_name}-${module.carshub_cluster.services["ecs_frontend"].name}-high-5xx-errors-${var.env}-${var.region}"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = "1"
   metric_name         = "HTTPCode_Target_5XX_Count"
@@ -1258,7 +1659,7 @@ module "carshub_frontend_lb_high_5xx_errors" {
 # ECS Task Restart Count - alerts on excessive task restarts which might indicate instability
 module "carshub_frontend_ecs_task_restarts" {
   source              = "../../../modules/cloudwatch/cloudwatch-alarm"
-  alarm_name          = "${module.carshub_cluster.cluster_name}-${module.carshub_cluster.services["ecs-frontend"].name}-high-task-restarts-${var.env}-${var.region}"
+  alarm_name          = "${module.carshub_cluster.cluster_name}-${module.carshub_cluster.services["ecs_frontend"].name}-high-task-restarts-${var.env}-${var.region}"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = "1"
   metric_name         = "TaskRestartCount"
@@ -1272,7 +1673,7 @@ module "carshub_frontend_ecs_task_restarts" {
 
   dimensions = {
     ClusterName = module.carshub_cluster.cluster_name
-    ServiceName = module.carshub_cluster.services["ecs-frontend"].name
+    ServiceName = module.carshub_cluster.services["ecs_frontend"].name
   }
 }
 
@@ -1281,7 +1682,7 @@ module "carshub_frontend_ecs_task_restarts" {
 # CPU Utilization Alarm
 module "carshub_backend_ecs_service_high_cpu" {
   source              = "../../../modules/cloudwatch/cloudwatch-alarm"
-  alarm_name          = "${module.carshub_cluster.cluster_name}-${module.carshub_cluster.services["ecs-backend"].name}-high-cpu-utilization-${var.env}-${var.region}"
+  alarm_name          = "${module.carshub_cluster.cluster_name}-${module.carshub_cluster.services["ecs_backend"].name}-high-cpu-utilization-${var.env}-${var.region}"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = "2"
   metric_name         = "CPUUtilization"
@@ -1295,7 +1696,7 @@ module "carshub_backend_ecs_service_high_cpu" {
 
   dimensions = {
     ClusterName = module.carshub_cluster.cluster_name
-    ServiceName = module.carshub_cluster.services["ecs-backend"].name
+    ServiceName = module.carshub_cluster.services["ecs_backend"].name
   }
 
 }
@@ -1303,7 +1704,7 @@ module "carshub_backend_ecs_service_high_cpu" {
 # Memory Utilization Alarm
 module "carshub_backend_ecs_service_high_memory" {
   source              = "../../../modules/cloudwatch/cloudwatch-alarm"
-  alarm_name          = "${module.carshub_cluster.cluster_name}-${module.carshub_cluster.services["ecs-backend"].name}-high-memory-utilization-${var.env}-${var.region}"
+  alarm_name          = "${module.carshub_cluster.cluster_name}-${module.carshub_cluster.services["ecs_backend"].name}-high-memory-utilization-${var.env}-${var.region}"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = "2"
   metric_name         = "MemoryUtilization"
@@ -1317,14 +1718,14 @@ module "carshub_backend_ecs_service_high_memory" {
 
   dimensions = {
     ClusterName = module.carshub_cluster.cluster_name
-    ServiceName = module.carshub_cluster.services["ecs-backend"].name
+    ServiceName = module.carshub_cluster.services["ecs_backend"].name
   }
 }
 
 # Service Running Tasks Alarm - alerts if there are fewer than expected tasks
 module "carshub_backend_ecs_service_running_tasks" {
   source              = "../../../modules/cloudwatch/cloudwatch-alarm"
-  alarm_name          = "${module.carshub_cluster.cluster_name}-${module.carshub_cluster.services["ecs-backend"].name}-low-running-tasks-${var.env}-${var.region}"
+  alarm_name          = "${module.carshub_cluster.cluster_name}-${module.carshub_cluster.services["ecs_backend"].name}-low-running-tasks-${var.env}-${var.region}"
   comparison_operator = "LessThanThreshold"
   evaluation_periods  = "1"
   metric_name         = "RunningTaskCount"
@@ -1338,14 +1739,14 @@ module "carshub_backend_ecs_service_running_tasks" {
 
   dimensions = {
     ClusterName = module.carshub_cluster.cluster_name
-    ServiceName = module.carshub_cluster.services["ecs-backend"].name
+    ServiceName = module.carshub_cluster.services["ecs_backend"].name
   }
 }
 
 # Service Failed Deployment Alarm
 module "carshub_backend_ecs_failed_deployments" {
   source              = "../../../modules/cloudwatch/cloudwatch-alarm"
-  alarm_name          = "${module.carshub_cluster.cluster_name}-${module.carshub_cluster.services["ecs-backend"].name}-failed-deployments-${var.env}-${var.region}"
+  alarm_name          = "${module.carshub_cluster.cluster_name}-${module.carshub_cluster.services["ecs_backend"].name}-failed-deployments-${var.env}-${var.region}"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = "1"
   metric_name         = "DeploymentFailures"
@@ -1359,14 +1760,14 @@ module "carshub_backend_ecs_failed_deployments" {
 
   dimensions = {
     ClusterName = module.carshub_cluster.cluster_name
-    ServiceName = module.carshub_cluster.services["ecs-backend"].name
+    ServiceName = module.carshub_cluster.services["ecs_backend"].name
   }
 }
 
 # Target Response Time Alarm (if using ALB)
 module "carshub_backend_lb_high_response_time" {
   source              = "../../../modules/cloudwatch/cloudwatch-alarm"
-  alarm_name          = "${module.carshub_cluster.cluster_name}-${module.carshub_cluster.services["ecs-backend"].name}-high-response-time-${var.env}-${var.region}"
+  alarm_name          = "${module.carshub_cluster.cluster_name}-${module.carshub_cluster.services["ecs_backend"].name}-high-response-time-${var.env}-${var.region}"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = "3"
   metric_name         = "TargetResponseTime"
@@ -1388,7 +1789,7 @@ module "carshub_backend_lb_high_response_time" {
 # HTTP 5XX Error Rate Alarm (if using ALB)
 module "carshub_backend_lb_high_5xx_errors" {
   source              = "../../../modules/cloudwatch/cloudwatch-alarm"
-  alarm_name          = "${module.carshub_cluster.cluster_name}-${module.carshub_cluster.services["ecs-backend"].name}-high-5xx-errors-${var.env}-${var.region}"
+  alarm_name          = "${module.carshub_cluster.cluster_name}-${module.carshub_cluster.services["ecs_backend"].name}-high-5xx-errors-${var.env}-${var.region}"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = "1"
   metric_name         = "HTTPCode_Target_5XX_Count"
@@ -1409,7 +1810,7 @@ module "carshub_backend_lb_high_5xx_errors" {
 # ECS Task Restart Count - alerts on excessive task restarts which might indicate instability
 module "carshub_backend_ecs_task_restarts" {
   source              = "../../../modules/cloudwatch/cloudwatch-alarm"
-  alarm_name          = "${module.carshub_cluster.cluster_name}-${module.carshub_cluster.services["ecs-backend"].name}-high-task-restarts-${var.env}-${var.region}"
+  alarm_name          = "${module.carshub_cluster.cluster_name}-${module.carshub_cluster.services["ecs_backend"].name}-high-task-restarts-${var.env}-${var.region}"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = "1"
   metric_name         = "TaskRestartCount"
@@ -1423,7 +1824,7 @@ module "carshub_backend_ecs_task_restarts" {
 
   dimensions = {
     ClusterName = module.carshub_cluster.cluster_name
-    ServiceName = module.carshub_cluster.services["ecs-backend"].name
+    ServiceName = module.carshub_cluster.services["ecs_backend"].name
   }
 }
 
@@ -1516,5 +1917,48 @@ module "rds_high_connections" {
   ok_actions          = [module.carshub_alarm_notifications.topic_arn]
   dimensions = {
     DBInstanceIdentifier = module.carshub_db.name
+  }
+}
+
+module "rds_swap_usage_alarm" {
+  source              = "../../../modules/cloudwatch/cloudwatch-alarm"
+  alarm_name          = "carshub-rds-swap-usage-${var.env}-${var.region}"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 2
+  metric_name         = "SwapUsage"
+  namespace           = "AWS/RDS"
+  period              = 300
+  statistic           = "Average"
+  threshold           = 1073741824
+  alarm_description   = "Alert when RDS swap usage exceeds 1 GB"
+  alarm_actions       = [module.carshub_alarm_notifications.topic_arn]
+  ok_actions          = [module.carshub_alarm_notifications.topic_arn]
+  dimensions = {
+    DBInstanceIdentifier = module.carshub_db.id
+  }
+}
+
+# -----------------------------------------------------------------------------------------
+# Resource Group Configuration
+# -----------------------------------------------------------------------------------------
+resource "aws_resourcegroups_group" "carshub_resource_group" {
+  name = "carshub-resource-group-${var.env}"
+
+  resource_query {
+    query = <<JSON
+{
+  "ResourceTypeFilters": "*,
+  "TagFilters": [
+    {
+      "Key": "Project",
+      "Values": ["${var.project}"]
+    },
+    {
+      "Key": "Env",
+      "Values": ["${var.env}"]
+    }
+  ]
+}
+JSON
   }
 }
