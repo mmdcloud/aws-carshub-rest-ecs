@@ -9,10 +9,6 @@ data "aws_elb_service_account" "main" {}
 
 data "aws_caller_identity" "current" {}
 
-data "aws_ssm_parameter" "ecs_optimized_ami" {
-  name = "/aws/service/ecs/optimized-ami/amazon-linux-2023/recommended"
-}
-
 # -----------------------------------------------------------------------------------------
 # VPC Configuration
 # -----------------------------------------------------------------------------------------
@@ -1243,6 +1239,15 @@ module "ecs_task_execution_role" {
                 "secretsmanager:DescribeSecret"
               ],
               "Resource": "${module.carshub_db_credentials.arn}"
+            },
+            {
+              "Action": [
+                "logs:CreateLogGroup",
+                "logs:CreateLogStream",
+                "logs:PutLogEvents"
+              ],
+              "Resource": "*",
+              "Effect": "Allow"
             }
         ]
     }
@@ -1421,13 +1426,15 @@ module "carshub_cluster" {
               protocol      = "tcp"
             }
           ]
-          readOnlyRootFilesystem = false
+          readonlyRootFilesystem = false
           logConfiguration = {
-            logDriver = "awslogs"
-            options = {
-              awslogs-group         = module.carshub_backend_ecs_log_group.name
-              awslogs-region        = var.region
-              awslogs-stream-prefix = "carshub-backend"
+            logConfiguration = {
+              logDriver = "awslogs"
+              options = {
+                awslogs-group         = module.carshub_backend_ecs_log_group.name
+                awslogs-region        = var.region
+                awslogs-stream-prefix = "carshub-backend"
+              }
             }
           }
           memoryReservation = 100
@@ -1947,7 +1954,7 @@ resource "aws_resourcegroups_group" "carshub_resource_group" {
   resource_query {
     query = <<JSON
 {
-  "ResourceTypeFilters": "*,
+  "ResourceTypeFilters": ["AWS::AllSupported"],
   "TagFilters": [
     {
       "Key": "Project",

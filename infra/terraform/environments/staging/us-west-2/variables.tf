@@ -33,3 +33,8 @@ variable "azs" {
   type        = list(string)
   description = "Availability Zones"
 }
+
+variable "project" {
+  type    = string
+  default = "CarsHub"
+}
