@@ -35,6 +35,11 @@ variable "database_subnets" {
   description = "Database Subnet CIDR values"
 }
 
+variable "project" {
+  type    = string
+  default = "CarsHub"
+}
+
 variable "azs" {
   type        = list(string)
   description = "Availability Zones"

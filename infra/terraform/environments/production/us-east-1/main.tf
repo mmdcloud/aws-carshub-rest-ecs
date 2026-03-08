@@ -413,7 +413,6 @@ module "carshub_frontend_container_registry" {
   force_delete         = true
   scan_on_push         = false
   image_tag_mutability = "IMMUTABLE"
-  bash_command         = "bash ${path.cwd}/../../../../../src/frontend/artifact_push.sh carshub-frontend-${var.env}-${var.region} ${var.region} http://${module.carshub_backend_lb.dns_name} ${module.carshub_media_cloudfront_distribution.domain_name}"
   name                 = "carshub-frontend-${var.env}-${var.region}"
   lifecycle_policy = jsonencode({
     rules = [
@@ -452,12 +451,28 @@ module "carshub_frontend_container_registry" {
   # kms_key         = module.carshub_kms_ecr.key_id
 }
 
+resource "null_resource" "build_and_push_frontend" {
+  # Re-trigger build if any of these change
+  triggers = {
+    codebuild_project = module.codebuild.project_name
+    image_tag         = "latest"
+    source_object     = module.agent_source_bucket.objects[0].key
+  }
+
+  provisioner "local-exec" {
+    command = "bash ${path.cwd}/../../../../../src/frontend/artifact_push.sh carshub-frontend-${var.env}-${var.region} ${var.region} http://${module.carshub_backend_lb.dns_name} ${module.carshub_media_cloudfront_distribution.domain_name}"
+  }
+
+  depends_on = [
+    module.carshub_frontend_container_registry,
+  ]
+}
+
 module "carshub_backend_container_registry" {
   source               = "../../../modules/ecr"
   force_delete         = true
   scan_on_push         = false
   image_tag_mutability = "IMMUTABLE"
-  bash_command         = "bash ${path.cwd}/../../../../../src/backend/api/artifact_push.sh carshub-backend-${var.env}-${var.region} ${var.region}"
   name                 = "carshub-backend-${var.env}-${var.region}"
   lifecycle_policy = jsonencode({
     rules = [
@@ -494,6 +509,23 @@ module "carshub_backend_container_registry" {
 
   # encryption_type = "KMS"
   # kms_key         = module.carshub_kms_ecr.key_id
+}
+
+resource "null_resource" "build_and_push_backend" {
+  # Re-trigger build if any of these change
+  triggers = {
+    codebuild_project = module.codebuild.project_name
+    image_tag         = "latest"
+    source_object     = module.agent_source_bucket.objects[0].key
+  }
+
+  provisioner "local-exec" {
+    command = "bash ${path.cwd}/../../../../../src/backend/api/artifact_push.sh carshub-backend-${var.env}-${var.region} ${var.region}"
+  }
+
+  depends_on = [
+    module.carshub_backend_container_registry,
+  ]
 }
 
 # -----------------------------------------------------------------------------------------
@@ -979,7 +1011,7 @@ module "carshub_media_update_function_iam_role" {
             {
               "Effect": "Allow",
               "Action": "secretsmanager:GetSecretValue",
-              "Resource": "${module.carshub_db_credentials.arn}"
+              "Resource": "arn:aws:secretsmanager:${var.region}:${data.aws_caller_identity.current.account_id}:secret:carshub-rds-secret-${var.env}-${var.region}-*"
             },
             {
                 "Action": ["s3:GetObject", "s3:PutObject"],
@@ -1238,7 +1270,7 @@ module "ecs_task_execution_role" {
                 "secretsmanager:GetSecretValue",
                 "secretsmanager:DescribeSecret"
               ],
-              "Resource": "${module.carshub_db_credentials.arn}"
+              "Resource": "*"
             },
             {
               "Action": [
@@ -1334,13 +1366,11 @@ module "carshub_cluster" {
           ]
           readonlyRootFilesystem = false
           logConfiguration = {
-            logConfiguration = {
-              logDriver = "awslogs"
-              options = {
-                awslogs-group         = module.carshub_frontend_ecs_log_group.name
-                awslogs-region        = var.region
-                awslogs-stream-prefix = "carshub-frontend"
-              }
+            logDriver = "awslogs"
+            options = {
+              awslogs-group         = module.carshub_frontend_ecs_log_group.name
+              awslogs-region        = var.region
+              awslogs-stream-prefix = "carshub-frontend"
             }
           }
           memoryReservation = 100
@@ -1411,11 +1441,11 @@ module "carshub_cluster" {
           secrets = [
             {
               name      = "UN"
-              valueFrom = "${module.carshub_db_credentials.arn}:username::"
+              valueFrom = "${replace(module.carshub_db_credentials.arn, "::secret:", ":${data.aws_caller_identity.current.account_id}:secret:")}:username::"
             },
             {
               name      = "CREDS"
-              valueFrom = "${module.carshub_db_credentials.arn}:password::"
+              valueFrom = "${replace(module.carshub_db_credentials.arn, "::secret:", ":${data.aws_caller_identity.current.account_id}:secret:")}:password::"
             }
           ]
           portMappings = [
@@ -1428,13 +1458,11 @@ module "carshub_cluster" {
           ]
           readonlyRootFilesystem = false
           logConfiguration = {
-            logConfiguration = {
-              logDriver = "awslogs"
-              options = {
-                awslogs-group         = module.carshub_backend_ecs_log_group.name
-                awslogs-region        = var.region
-                awslogs-stream-prefix = "carshub-backend"
-              }
+            logDriver = "awslogs"
+            options = {
+              awslogs-group         = module.carshub_backend_ecs_log_group.name
+              awslogs-region        = var.region
+              awslogs-stream-prefix = "carshub-backend"
             }
           }
           memoryReservation = 100
