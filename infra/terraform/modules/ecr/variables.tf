@@ -22,3 +22,7 @@ variable "kms_key" {
   type = string
   default = null
 }
+variable "tags" {
+  type = map(string)
+  default = {}
+}
