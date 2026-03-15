@@ -22,7 +22,7 @@ module "carshub_vpc" {
   database_subnets        = var.database_subnets
   enable_dns_hostnames    = true
   enable_dns_support      = true
-  create_igw              = true
+  create_igw              = true 
   map_public_ip_on_launch = true
   enable_nat_gateway      = true
   single_nat_gateway      = false
@@ -246,7 +246,7 @@ module "carshub_db_credentials" {
   source                  = "../../../modules/secrets-manager"
   name                    = "carshub-rds-secret-${var.env}-${var.region}"
   description             = "Secret for storing RDS credentials"
-  recovery_window_in_days = 0
+  recovery_window_in_days = 7
   secret_string = jsonencode({
     username = tostring(data.vault_generic_secret.rds.data["username"])
     password = tostring(data.vault_generic_secret.rds.data["password"])
@@ -288,13 +288,15 @@ module "flow_logs_role" {
         "Statement": [
             {
                 "Action": [
-                  "logs:CreateLogGroup",
                   "logs:CreateLogStream",
                   "logs:PutLogEvents",
                   "logs:DescribeLogGroups",
                   "logs:DescribeLogStreams"
                 ],
-                "Resource": "*",
+                "Resource": [
+                  "${module.carshub_flow_log_group.arn}",
+                  "${module.carshub_flow_log_group.arn}:*"
+                ],
                 "Effect": "Allow"
             }
         ]
@@ -1218,7 +1220,10 @@ module "ecs_task_execution_role" {
                 "Action": [
                   "s3:PutObject"
                 ],
-                "Resource": "*",
+                "Resource": [
+                  "${module.carshub_media_bucket.arn}",
+                  "${module.carshub_media_bucket.arn}/*"
+                ],
                 "Effect": "Allow"
             },
             {
@@ -1227,7 +1232,9 @@ module "ecs_task_execution_role" {
                 "secretsmanager:GetSecretValue",
                 "secretsmanager:DescribeSecret"
               ],
-              "Resource": "*"
+              "Resource": [
+                "${module.carshub_db_credentials.arn}"
+              ]
             },
             {
               "Action": [
@@ -1235,13 +1242,16 @@ module "ecs_task_execution_role" {
                 "logs:CreateLogStream",
                 "logs:PutLogEvents"
               ],
-              "Resource": "*",
+              "Resource": [
+                "${module.carshub_frontend_ecs_log_group.arn}:*",
+                "${module.carshub_backend_ecs_log_group.arn}:*"
+              ],
               "Effect": "Allow"
             }
         ]
     }
     EOF
-    tags = {
+  tags = {
     Name        = "carshub-ecs-task-execution-role-${var.env}-${var.region}"
     Environment = "${var.env}"
     Project     = var.project
@@ -1265,6 +1275,11 @@ module "carshub_frontend_ecs_log_group" {
   log_group_name    = "/aws/ecs/carshub-frontend-ecs-${var.env}-${var.region}"
   skip_destroy      = false
   retention_in_days = 90
+  tags = {
+    Name        = "/aws/ecs/carshub-frontend-ecs-${var.env}-${var.region}"
+    Environment = "${var.env}"
+    Project     = var.project
+  }
 }
 
 module "carshub_backend_ecs_log_group" {
@@ -1272,6 +1287,11 @@ module "carshub_backend_ecs_log_group" {
   log_group_name    = "/aws/ecs/carshub-backend-ecs-${var.env}-${var.region}"
   skip_destroy      = false
   retention_in_days = 90
+  tags = {
+    Name        = "/aws/ecs/carshub-backend-ecs-${var.env}-${var.region}"
+    Environment = "${var.env}"
+    Project     = var.project
+  }
 }
 
 module "carshub_cluster" {
@@ -1957,10 +1977,6 @@ resource "aws_resourcegroups_group" "carshub_resource_group" {
     {
       "Key": "Project",
       "Values": ["${var.project}"]
-    },
-    {
-      "Key": "Env",
-      "Values": ["${var.env}"]
     }
   ]
 }
@@ -2040,9 +2056,9 @@ module "carshub_waf" {
   # Alarm Thresholds — tune after observing normal traffic
   # ---------------------------------------------------
 
-  alarm_blocked_requests_threshold = 500   # > 500 total blocks in 5 min = alert
-  alarm_rate_limit_threshold       = 100   # > 100 rate-limit hits in 5 min = alert
-  alarm_auth_rate_limit_threshold  = 20    # > 20 auth blocks in 5 min = alert
+  alarm_blocked_requests_threshold = 500 # > 500 total blocks in 5 min = alert
+  alarm_rate_limit_threshold       = 100 # > 100 rate-limit hits in 5 min = alert
+  alarm_auth_rate_limit_threshold  = 20  # > 20 auth blocks in 5 min = alert
 
   tags = {
     Name        = "carshub-waf-${var.env}-${var.region}"
