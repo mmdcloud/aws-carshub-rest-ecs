@@ -9,6 +9,10 @@ data "aws_elb_service_account" "main" {}
 
 data "aws_caller_identity" "current" {}
 
+data "aws_db_instance" "rds" {
+  db_instance_identifier = "carshub-db-produseast1"
+}
+
 # -----------------------------------------------------------------------------------------
 # VPC Configuration
 # -----------------------------------------------------------------------------------------
@@ -22,11 +26,11 @@ module "carshub_vpc" {
   database_subnets        = var.database_subnets
   enable_dns_hostnames    = true
   enable_dns_support      = true
-  create_igw              = true 
+  create_igw              = true
   map_public_ip_on_launch = true
   enable_nat_gateway      = true
-  single_nat_gateway      = false
-  one_nat_gateway_per_az  = true
+  single_nat_gateway      = true
+  one_nat_gateway_per_az  = false
   tags = {
     Name        = "carshub-vpc-${var.env}-${var.region}"
     Environment = "${var.env}"
@@ -313,7 +317,7 @@ module "carshub_flow_log_group" {
   source            = "../../../modules/cloudwatch/cloudwatch-log-group"
   log_group_name    = "/aws/vpc/flow-logs/carshub-application-${var.env}-${var.region}"
   skip_destroy      = false
-  retention_in_days = 365
+  retention_in_days = 90
 }
 
 # Add VPC Flow Logs for security monitoring
@@ -387,23 +391,6 @@ module "carshub_frontend_container_registry" {
   }
 }
 
-resource "null_resource" "build_and_push_frontend" {
-  # Re-trigger build if any of these change
-  triggers = {
-    codebuild_project = module.codebuild.project_name
-    image_tag         = "latest"
-    source_object     = module.agent_source_bucket.objects[0].key
-  }
-
-  provisioner "local-exec" {
-    command = "bash ${path.cwd}/../../../../../src/frontend/artifact_push.sh carshub-frontend-${var.env}-${var.region} ${var.region} http://${module.carshub_backend_lb.dns_name} ${module.carshub_media_cloudfront_distribution.domain_name}"
-  }
-
-  depends_on = [
-    module.carshub_frontend_container_registry,
-  ]
-}
-
 module "carshub_backend_container_registry" {
   source               = "../../../modules/ecr"
   force_delete         = true
@@ -453,23 +440,6 @@ module "carshub_backend_container_registry" {
   }
 }
 
-resource "null_resource" "build_and_push_backend" {
-  # Re-trigger build if any of these change
-  triggers = {
-    codebuild_project = module.codebuild.project_name
-    image_tag         = "latest"
-    source_object     = module.agent_source_bucket.objects[0].key
-  }
-
-  provisioner "local-exec" {
-    command = "bash ${path.cwd}/../../../../../src/backend/api/artifact_push.sh carshub-backend-${var.env}-${var.region} ${var.region}"
-  }
-
-  depends_on = [
-    module.carshub_backend_container_registry,
-  ]
-}
-
 # -----------------------------------------------------------------------------------------
 # RDS Instance
 # -----------------------------------------------------------------------------------------
@@ -506,8 +476,8 @@ resource "aws_iam_role_policy_attachment" "rds_monitoring_policy" {
 
 module "carshub_db" {
   source     = "../../../modules/rds"
-  db_name    = "carshubdb${var.env}useast1"
-  identifier = "carshub-db-${var.env}"
+  db_name    = "carshubdb${var.env}uswest2"
+  identifier = "carshub-db-${var.env}uswest2"
 
   allocated_storage     = 100
   max_allocated_storage = 500
@@ -519,12 +489,12 @@ module "carshub_db" {
 
   engine                     = "mysql"
   engine_version             = "8.0.40"
-  instance_class             = "db.r6g.large"
+  instance_class             = "db.t3.medium"
   auto_minor_version_upgrade = true
 
   deletion_protection = false
 
-  multi_az = true
+  multi_az = false
 
   username                            = tostring(data.vault_generic_secret.rds.data["username"])
   password                            = tostring(data.vault_generic_secret.rds.data["password"])
@@ -535,18 +505,18 @@ module "carshub_db" {
   vpc_security_group_ids = [module.carshub_rds_sg.id]
   publicly_accessible    = false
 
-  backup_retention_period   = 35
-  backup_window             = "03:00-06:00"
+  backup_retention_period   = 7
+  backup_window             = "05:00-07:00"
   copy_tags_to_snapshot     = true
   skip_final_snapshot       = true
   final_snapshot_identifier = "carshub-db-final-snapshot-${var.env}"
 
-  maintenance_window = "sun:08:00-sun:10:00"
+  maintenance_window = "sat:08:00-sat:10:00"
 
-  enabled_cloudwatch_logs_exports       = ["audit", "error", "general", "slowquery"]
-  performance_insights_enabled          = true
+  enabled_cloudwatch_logs_exports       = ["error", "slowquery"]
+  performance_insights_enabled          = false
   performance_insights_retention_period = 7
-  monitoring_interval                   = 60
+  monitoring_interval                   = 0
   # performance_insights_kms_key_id       = module.carshub_kms_rds.arn
   monitoring_role_arn = aws_iam_role.rds_monitoring_role.arn
 
@@ -555,7 +525,7 @@ module "carshub_db" {
   parameters = [
     {
       name  = "max_connections"
-      value = "1000"
+      value = "500"
     },
     # {
     #   name  = "innodb_buffer_pool_size"
@@ -609,6 +579,11 @@ module "carshub_db" {
   }
 }
 
+resource "aws_db_instance_automated_backups_replication" "primary_backup_replication" {
+  source_db_instance_arn = data.aws_db_instance.rds.db_instance_arn
+  retention_period       = 7
+}
+
 # -----------------------------------------------------------------------------------------
 # S3 Configuration
 # -----------------------------------------------------------------------------------------
@@ -657,6 +632,20 @@ module "carshub_media_bucket" {
             "AWS:SourceArn" : "${module.carshub_media_cloudfront_distribution.arn}"
           }
         }
+      },
+      {
+        "Sid":     "AllowCRRFromPrimary",
+        "Effect":  "Allow",
+        "Principal": {
+          "AWS" : "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/carshub-s3-replication-role-${var.env}-us-east-1"
+        },
+        "Action" : [
+          "s3:ReplicateObject",
+          "s3:ReplicateDelete",
+          "s3:ReplicateTags",
+          "s3:ObjectOwnerOverrideToBucketOwner"
+        ],
+        "Resource" : "arn:aws:s3:::carshub-media-bucket${var.env}-${var.region}/*"
       }
     ]
   })
@@ -1251,7 +1240,7 @@ module "ecs_task_execution_role" {
         ]
     }
     EOF
-  tags = {
+    tags = {
     Name        = "carshub-ecs-task-execution-role-${var.env}-${var.region}"
     Environment = "${var.env}"
     Project     = var.project
@@ -1275,11 +1264,6 @@ module "carshub_frontend_ecs_log_group" {
   log_group_name    = "/aws/ecs/carshub-frontend-ecs-${var.env}-${var.region}"
   skip_destroy      = false
   retention_in_days = 90
-  tags = {
-    Name        = "/aws/ecs/carshub-frontend-ecs-${var.env}-${var.region}"
-    Environment = "${var.env}"
-    Project     = var.project
-  }
 }
 
 module "carshub_backend_ecs_log_group" {
@@ -1287,11 +1271,6 @@ module "carshub_backend_ecs_log_group" {
   log_group_name    = "/aws/ecs/carshub-backend-ecs-${var.env}-${var.region}"
   skip_destroy      = false
   retention_in_days = 90
-  tags = {
-    Name        = "/aws/ecs/carshub-backend-ecs-${var.env}-${var.region}"
-    Environment = "${var.env}"
-    Project     = var.project
-  }
 }
 
 module "carshub_cluster" {
@@ -1299,11 +1278,11 @@ module "carshub_cluster" {
   cluster_name = "carshub-ecs-cluster-${var.env}-${var.region}"
   services = {
     ecs_frontend = {
-      cpu                    = 2048
-      memory                 = 4096
+      cpu                    = 1024
+      memory                 = 2048
       task_exec_iam_role_arn = module.ecs_task_execution_role.arn
       iam_role_arn           = module.ecs_task_execution_role.arn
-      desired_count          = 2
+      desired_count          = 1
       assign_public_ip       = false
       deployment_controller = {
         type = "ECS"
@@ -1318,8 +1297,8 @@ module "carshub_cluster" {
       requires_compatibilities = ["FARGATE"]
       container_definitions = {
         ecs_frontend = {
-          cpu       = 1024
-          memory    = 2048
+          cpu       = 512
+          memory    = 1024
           essential = true
           image     = "${module.carshub_frontend_container_registry.repository_url}:latest"
           healthCheck = {
@@ -1377,11 +1356,11 @@ module "carshub_cluster" {
     }
 
     ecs_backend = {
-      cpu                    = 2048
-      memory                 = 4096
+      cpu                    = 1024
+      memory                 = 2048
       task_exec_iam_role_arn = module.ecs_task_execution_role.arn
       iam_role_arn           = module.ecs_task_execution_role.arn
-      desired_count          = 2
+      desired_count          = 1
       assign_public_ip       = false
       deployment_controller = {
         type = "ECS"
@@ -1396,8 +1375,8 @@ module "carshub_cluster" {
       requires_compatibilities = ["FARGATE"]
       container_definitions = {
         ecs_backend = {
-          cpu       = 1024
-          memory    = 2048
+          cpu       = 512
+          memory    = 1024
           essential = true
           image     = "${module.carshub_backend_container_registry.repository_url}:latest"
           healthCheck = {
@@ -1478,7 +1457,7 @@ module "carshub_cluster" {
 # Module for App Autoscaling Policy
 module "carshub_frontend_app_autoscaling_policy" {
   source             = "../../../modules/autoscaling"
-  min_capacity       = 2
+  min_capacity       = 1
   max_capacity       = 10
   resource_id        = "service/${module.carshub_cluster.cluster_name}/${module.carshub_cluster.services["ecs_frontend"].name}"
   scalable_dimension = "ecs:service:DesiredCount"
@@ -1509,7 +1488,7 @@ module "carshub_frontend_app_autoscaling_policy" {
 
 module "carshub_backend_app_autoscaling_policy" {
   source             = "../../../modules/autoscaling"
-  min_capacity       = 2
+  min_capacity       = 1
   max_capacity       = 10
   resource_id        = "service/${module.carshub_cluster.cluster_name}/${module.carshub_cluster.services["ecs_backend"].name}"
   scalable_dimension = "ecs:service:DesiredCount"
@@ -1977,13 +1956,16 @@ resource "aws_resourcegroups_group" "carshub_resource_group" {
     {
       "Key": "Project",
       "Values": ["${var.project}"]
+    },
+    {
+      "Key": "Env",
+      "Values": ["${var.env}"]
     }
   ]
 }
 JSON
   }
 }
-
 
 # -----------------------------------------------------------------------------------------
 # WAF Configuration
