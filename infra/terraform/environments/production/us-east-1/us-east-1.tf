@@ -343,7 +343,7 @@ module "carshub_frontend_container_registry" {
   force_delete         = true
   scan_on_push         = false
   image_tag_mutability = "IMMUTABLE"
-  name                 = "carshub-frontend-${var.env}-${var.region}"
+  name                 = "carshub-frontend-registry-${var.env}-${var.region}"
   lifecycle_policy = jsonencode({
     rules = [
       {
@@ -381,7 +381,7 @@ module "carshub_frontend_container_registry" {
   # kms_key         = module.carshub_kms_ecr.key_id
 
   tags = {
-    Name        = "carshub-frontend-${var.env}-${var.region}"
+    Name        = "carshub-frontend-registry-${var.env}-${var.region}"
     Environment = "${var.env}"
     Project     = var.project
   }
@@ -396,7 +396,7 @@ resource "null_resource" "build_and_push_frontend" {
   }
 
   provisioner "local-exec" {
-    command = "bash ${path.cwd}/../../../../../src/frontend/artifact_push.sh carshub-frontend-${var.env}-${var.region} ${var.region} http://${module.carshub_backend_lb.dns_name} ${module.carshub_media_cloudfront_distribution.domain_name}"
+    command = "bash ${path.cwd}/../../../../../src/frontend/artifact_push.sh carshub-frontend-registry-${var.env}-${var.region} ${var.region} http://${module.carshub_backend_lb.dns_name} ${module.carshub_media_cloudfront_distribution.domain_name}"
   }
 
   depends_on = [
@@ -409,7 +409,7 @@ module "carshub_backend_container_registry" {
   force_delete         = true
   scan_on_push         = false
   image_tag_mutability = "IMMUTABLE"
-  name                 = "carshub-backend-${var.env}-${var.region}"
+  name                 = "carshub-backend-registry-${var.env}-${var.region}"
   lifecycle_policy = jsonencode({
     rules = [
       {
@@ -447,7 +447,7 @@ module "carshub_backend_container_registry" {
   # kms_key         = module.carshub_kms_ecr.key_id
 
   tags = {
-    Name        = "carshub-backend-${var.env}-${var.region}"
+    Name        = "carshub-backend-registry-${var.env}-${var.region}"
     Environment = "${var.env}"
     Project     = var.project
   }
@@ -462,7 +462,7 @@ resource "null_resource" "build_and_push_backend" {
   }
 
   provisioner "local-exec" {
-    command = "bash ${path.cwd}/../../../../../src/backend/api/artifact_push.sh carshub-backend-${var.env}-${var.region} ${var.region}"
+    command = "bash ${path.cwd}/../../../../../src/backend/api/artifact_push.sh carshub-backend-registry-${var.env}-${var.region} ${var.region}"
   }
 
   depends_on = [
@@ -480,12 +480,12 @@ resource "aws_ecr_replication_configuration" "carshub_ecr_replication" {
 
       # Only replicate the carshub repos, not everything in the account
       repository_filter {
-        filter      = "carshub-frontend-${var.env}"
+        filter      = "carshub-frontend-registry-${var.env}"
         filter_type = "PREFIX_MATCH"
       }
 
       repository_filter {
-        filter      = "carshub-backend-${var.env}"
+        filter      = "carshub-backend-registry-${var.env}"
         filter_type = "PREFIX_MATCH"
       }
     }
@@ -699,20 +699,61 @@ module "carshub_media_bucket" {
   }
 }
 
-resource "aws_iam_role" "s3_replication_role" {
-  name = "carshub-s3-replication-role-${var.env}-${var.region}"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect    = "Allow"
-        Principal = { Service = "s3.amazonaws.com" }
-        Action    = "sts:AssumeRole"
-      }
-    ]
-  })
-
+module "s3_replication_role" {
+  source             = "../../../modules/iam"
+  role_name          = "carshub-s3-replication-role-${var.env}-${var.region}"
+  role_description   = "IAM role for S3 replication"
+  policy_name        = "carshub-s3-replication-policy-${var.env}-${var.region}"
+  policy_description = "IAM policy for S3 replication"
+  assume_role_policy = <<EOF
+    {
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Action": "sts:AssumeRole",
+                "Principal": {
+                  "Service": "s3.amazonaws.com"
+                },
+                "Effect": "Allow",
+                "Sid": ""
+            }
+        ]
+    }
+    EOF
+  policy             = <<EOF
+    {
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Action": [
+                  "s3:GetReplicationConfiguration",
+                  "s3:ListBucket"
+                ],
+                "Resource": "${module.carshub_media_bucket.arn}",
+                "Effect": "Allow"
+            },
+            {
+                "Action": [
+                  "s3:GetObjectVersionForReplication",
+                  "s3:GetObjectVersionAcl",
+                  "s3:GetObjectVersionTagging"
+                ],
+                "Resource": "${module.carshub_media_bucket.arn}/*",
+                "Effect": "Allow"
+            },
+            {
+                "Action": [
+                  "s3:ReplicateObject",
+                  "s3:ReplicateDelete",
+                  "s3:ReplicateTags",
+                  "s3:ObjectOwnerOverrideToBucketOwner"
+                ],
+                "Resource": "arn:aws:s3:::carshub-media-bucket-${var.env}-us-west-2/*"
+                "Effect": "Allow"
+            }
+        ]
+    }
+    EOF
   tags = {
     Name        = "carshub-s3-replication-role-${var.env}-${var.region}"
     Environment = var.env
@@ -720,53 +761,9 @@ resource "aws_iam_role" "s3_replication_role" {
   }
 }
 
-resource "aws_iam_role_policy" "s3_replication_policy" {
-  name = "carshub-s3-replication-policy-${var.env}"
-  role = aws_iam_role.s3_replication_role.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      # Read permissions on the SOURCE bucket (us-east-1)
-      {
-        Effect = "Allow"
-        Action = [
-          "s3:GetReplicationConfiguration",
-          "s3:ListBucket"
-        ]
-        Resource = module.carshub_media_bucket.arn
-      },
-      {
-        Effect = "Allow"
-        Action = [
-          "s3:GetObjectVersionForReplication",
-          "s3:GetObjectVersionAcl",
-          "s3:GetObjectVersionTagging"
-        ]
-        Resource = "${module.carshub_media_bucket.arn}/*"
-      },
-      # Write permissions on the DESTINATION bucket (us-west-2)
-      {
-        Effect = "Allow"
-        Action = [
-          "s3:ReplicateObject",
-          "s3:ReplicateDelete",
-          "s3:ReplicateTags",
-          "s3:ObjectOwnerOverrideToBucketOwner"
-        ]
-        Resource = "arn:aws:s3:::carshub-media-bucket${var.env}-us-west-2/*"
-      }
-    ]
-  })
-}
-
-# -----------------------------------------------------------------------------------------
-# S3 Cross-Region Replication — rule on the source bucket (us-east-1)
-# Attach this to the existing carshub_media_bucket module
-# -----------------------------------------------------------------------------------------
 resource "aws_s3_bucket_replication_configuration" "media_bucket_replication" {
   bucket = module.carshub_media_bucket.bucket
-  role   = aws_iam_role.s3_replication_role.arn
+  role   = module.s3_replication_role.arn
 
   rule {
     id     = "replicate-all-to-us-west-2"
