@@ -573,7 +573,7 @@ module "carshub_db" {
     # }
   ]
   tags = {
-    Name        = "carshub-db-${var.env}"
+    Name        = "carshubdb${var.env}uswest2"
     Environment = "${var.env}"
     Project     = var.project
   }

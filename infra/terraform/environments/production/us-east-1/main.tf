@@ -22,7 +22,7 @@ module "carshub_vpc" {
   database_subnets        = var.database_subnets
   enable_dns_hostnames    = true
   enable_dns_support      = true
-  create_igw              = true 
+  create_igw              = true
   map_public_ip_on_launch = true
   enable_nat_gateway      = true
   single_nat_gateway      = false
@@ -390,9 +390,7 @@ module "carshub_frontend_container_registry" {
 resource "null_resource" "build_and_push_frontend" {
   # Re-trigger build if any of these change
   triggers = {
-    codebuild_project = module.codebuild.project_name
-    image_tag         = "latest"
-    source_object     = module.agent_source_bucket.objects[0].key
+    image_tag = "latest"
   }
 
   provisioner "local-exec" {
@@ -456,9 +454,7 @@ module "carshub_backend_container_registry" {
 resource "null_resource" "build_and_push_backend" {
   # Re-trigger build if any of these change
   triggers = {
-    codebuild_project = module.codebuild.project_name
-    image_tag         = "latest"
-    source_object     = module.agent_source_bucket.objects[0].key
+    image_tag = "latest"
   }
 
   provisioner "local-exec" {
@@ -1198,7 +1194,7 @@ module "carshub_media_cloudfront_distribution" {
 # -----------------------------------------------------------------------------------------
 module "carshub_frontend_lb" {
   source                     = "terraform-aws-modules/alb/aws"
-  name                       = "carshub-frontend-lb-${var.env}-${var.region}"
+  name                       = "carshub-front-lb-${var.env}-${var.region}"
   load_balancer_type         = "application"
   vpc_id                     = module.carshub_vpc.vpc_id
   subnets                    = module.carshub_vpc.public_subnets
@@ -1240,7 +1236,7 @@ module "carshub_frontend_lb" {
     }
   }
   tags = {
-    Name        = "carshub-frontend-lb-${var.env}-${var.region}"
+    Name        = "carshub-front-lb-${var.env}-${var.region}"
     Environment = "${var.env}"
     Project     = var.project
   }
@@ -1249,7 +1245,7 @@ module "carshub_frontend_lb" {
 
 module "carshub_backend_lb" {
   source                     = "terraform-aws-modules/alb/aws"
-  name                       = "carshub-backend-lb-${var.env}-${var.region}"
+  name                       = "carshub-back-lb-${var.env}-${var.region}"
   load_balancer_type         = "application"
   vpc_id                     = module.carshub_vpc.vpc_id
   subnets                    = module.carshub_vpc.public_subnets
@@ -1291,7 +1287,7 @@ module "carshub_backend_lb" {
     }
   }
   tags = {
-    Name        = "carshub-backend-lb-${var.env}-${var.region}"
+    Name        = "carshub-back-lb-${var.env}-${var.region}"
     Environment = "${var.env}"
     Project     = var.project
   }
@@ -2102,7 +2098,7 @@ module "carshub_waf" {
   source = "../../../modules/waf"
 
   # Naming — matches your existing convention
-  name = "carshub-${var.env}-${var.region}"
+  name = "carshub-waf-${var.env}-${var.region}"
 
   # Attach WAF to the public-facing Frontend ALB
   # Replace with your actual frontend ALB ARN output
@@ -2166,9 +2162,9 @@ module "carshub_waf" {
   # Alarm Thresholds — tune after observing normal traffic
   # ---------------------------------------------------
 
-  alarm_blocked_requests_threshold = 500 # > 500 total blocks in 5 min = alert
-  alarm_rate_limit_threshold       = 100 # > 100 rate-limit hits in 5 min = alert
-  alarm_auth_rate_limit_threshold  = 20  # > 20 auth blocks in 5 min = alert
+  alarm_blocked_requests_threshold = 500
+  alarm_rate_limit_threshold       = 100
+  alarm_auth_rate_limit_threshold  = 20
 
   tags = {
     Name        = "carshub-waf-${var.env}-${var.region}"
