@@ -321,7 +321,7 @@ module "carshub_flow_log_group" {
   source            = "../../../modules/cloudwatch/cloudwatch-log-group"
   log_group_name    = "/aws/vpc/flow-logs/carshub-application-${var.env}-${var.region}"
   skip_destroy      = false
-  retention_in_days = 90
+  retention_in_days = 0
 }
 
 # Add VPC Flow Logs for security monitoring
@@ -1355,14 +1355,14 @@ module "carshub_frontend_ecs_log_group" {
   source            = "../../../modules/cloudwatch/cloudwatch-log-group"
   log_group_name    = "/aws/ecs/carshub-frontend-ecs-${var.env}-${var.region}"
   skip_destroy      = false
-  retention_in_days = 90
+  retention_in_days = 0
 }
 
 module "carshub_backend_ecs_log_group" {
   source            = "../../../modules/cloudwatch/cloudwatch-log-group"
   log_group_name    = "/aws/ecs/carshub-backend-ecs-${var.env}-${var.region}"
   skip_destroy      = false
-  retention_in_days = 90
+  retention_in_days = 0
 }
 
 module "carshub_cluster" {
