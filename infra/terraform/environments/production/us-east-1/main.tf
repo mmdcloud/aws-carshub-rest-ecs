@@ -632,7 +632,7 @@ module "carshub_db" {
 # -----------------------------------------------------------------------------------------
 module "carshub_media_bucket" {
   source      = "../../../modules/s3"
-  bucket_name = "carshub-media-bucket${var.env}-${var.region}"
+  bucket_name = "carshub-media-bucket-${var.env}-${var.region}"
   objects = [
     {
       key    = "images/"
@@ -689,98 +689,10 @@ module "carshub_media_bucket" {
     lambda_function = []
   }
   tags = {
-    Name        = "carshub-media-bucket${var.env}-${var.region}"
+    Name        = "carshub-media-bucket-${var.env}-${var.region}"
     Environment = "${var.env}"
     Project     = var.project
   }
-}
-
-module "s3_replication_role" {
-  source             = "../../../modules/iam"
-  role_name          = "carshub-s3-replication-role-${var.env}-${var.region}"
-  role_description   = "IAM role for S3 replication"
-  policy_name        = "carshub-s3-replication-policy-${var.env}-${var.region}"
-  policy_description = "IAM policy for S3 replication"
-  assume_role_policy = <<EOF
-    {
-        "Version": "2012-10-17",
-        "Statement": [
-            {
-                "Action": "sts:AssumeRole",
-                "Principal": {
-                  "Service": "s3.amazonaws.com"
-                },
-                "Effect": "Allow",
-                "Sid": ""
-            }
-        ]
-    }
-    EOF
-  policy             = <<EOF
-    {
-        "Version": "2012-10-17",
-        "Statement": [
-            {
-                "Action": [
-                  "s3:GetReplicationConfiguration",
-                  "s3:ListBucket"
-                ],
-                "Resource": "${module.carshub_media_bucket.arn}",
-                "Effect": "Allow"
-            },
-            {
-                "Action": [
-                  "s3:GetObjectVersionForReplication",
-                  "s3:GetObjectVersionAcl",
-                  "s3:GetObjectVersionTagging"
-                ],
-                "Resource": "${module.carshub_media_bucket.arn}/*",
-                "Effect": "Allow"
-            },
-            {
-                "Action": [
-                  "s3:ReplicateObject",
-                  "s3:ReplicateDelete",
-                  "s3:ReplicateTags",
-                  "s3:ObjectOwnerOverrideToBucketOwner"
-                ],
-                "Resource": "arn:aws:s3:::carshub-media-bucket-${var.env}-us-west-2/*"
-                "Effect": "Allow"
-            }
-        ]
-    }
-    EOF
-  tags = {
-    Name        = "carshub-s3-replication-role-${var.env}-${var.region}"
-    Environment = var.env
-    Project     = var.project
-  }
-}
-
-resource "aws_s3_bucket_replication_configuration" "media_bucket_replication" {
-  bucket = module.carshub_media_bucket.bucket
-  role   = module.s3_replication_role.arn
-
-  rule {
-    id     = "replicate-all-to-us-west-2"
-    status = "Enabled"
-
-    # Replicate everything — images/ and documents/ both
-    filter {}
-
-    destination {
-      bucket        = "arn:aws:s3:::carshub-media-bucket${var.env}-us-west-2"
-      storage_class = "STANDARD_IA" # 💰 cheaper storage class for DR copies
-    }
-
-    # Replicate delete markers so deletions sync to secondary
-    delete_marker_replication {
-      status = "Enabled"
-    }
-  }
-
-  # Versioning must be enabled on the source — it already is in your module
-  depends_on = [module.carshub_media_bucket]
 }
 
 module "carshub_media_update_function_code" {
