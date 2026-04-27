@@ -17,6 +17,14 @@ data "aws_s3_bucket" "media_useast1_bucket" {
   bucket = "carshub-media-bucket-prod-us-east-1"
 }
 
+resource "random_id" "id" {
+  byte_length = 8
+}
+
+data "aws_secretsmanager_secret" "carshub_db_credentials" {  
+  name = "carshub-rds-secret-prod-us-east-1"
+}
+
 # -----------------------------------------------------------------------------------------
 # VPC Configuration
 # -----------------------------------------------------------------------------------------
@@ -250,21 +258,21 @@ module "carshub_lambda_sg" {
 # -----------------------------------------------------------------------------------------
 # Secrets Manager
 # -----------------------------------------------------------------------------------------
-module "carshub_db_credentials" {
-  source                  = "../../../modules/secrets-manager"
-  name                    = "carshub-rds-secret-${var.env}-${var.region}"
-  description             = "Secret for storing RDS credentials"
-  recovery_window_in_days = 7
-  secret_string = jsonencode({
-    username = tostring(data.vault_generic_secret.rds.data["username"])
-    password = tostring(data.vault_generic_secret.rds.data["password"])
-  })
-  tags = {
-    Name        = "carshub-rds-secret-${var.env}-${var.region}"
-    Environment = var.env
-    Project     = var.project
-  }
-}
+# module "carshub_db_credentials" {
+#   source                  = "../../../modules/secrets-manager"
+#   name                    = "carshub-rds-secret-${var.env}-${var.region}-${random_id.id.hex}"
+#   description             = "Secret for storing RDS credentials"
+#   recovery_window_in_days = 7
+#   secret_string = jsonencode({
+#     username = tostring(data.vault_generic_secret.rds.data["username"])
+#     password = tostring(data.vault_generic_secret.rds.data["password"])
+#   })
+#   tags = {
+#     Name        = "carshub-rds-secret-${var.env}-${var.region}"
+#     Environment = var.env
+#     Project     = var.project
+#   }
+# }
 
 # -----------------------------------------------------------------------------------------
 # VPC Flow Logs
@@ -1105,7 +1113,7 @@ module "carshub_media_update_function" {
     target_arn = module.carshub_media_events_dlq.arn
   }
   env_variables = {
-    SECRET_NAME = module.carshub_db_credentials.name
+    SECRET_NAME = data.aws_secretsmanager_secret.carshub_db_credentials.name
     DB_HOST     = module.carshub_db.address
     DB_NAME     = var.db_name
     REGION      = var.region
@@ -1314,7 +1322,7 @@ module "ecs_task_execution_role" {
                 "secretsmanager:DescribeSecret"
               ],
               "Resource": [
-                "${module.carshub_db_credentials.arn}"
+                "${data.aws_secretsmanager_secret.carshub_db_credentials.arn}"
               ]
             },
             {
@@ -1494,11 +1502,11 @@ module "carshub_cluster" {
           secrets = [
             {
               name      = "UN"
-              valueFrom = "${replace(module.carshub_db_credentials.arn, "::secret:", ":${data.aws_caller_identity.current.account_id}:secret:")}:username::"
+              valueFrom = "${replace(data.aws_secretsmanager_secret.carshub_db_credentials.arn, "::secret:", ":${data.aws_caller_identity.current.account_id}:secret:")}:username::"
             },
             {
               name      = "CREDS"
-              valueFrom = "${replace(module.carshub_db_credentials.arn, "::secret:", ":${data.aws_caller_identity.current.account_id}:secret:")}:password::"
+              valueFrom = "${replace(data.aws_secretsmanager_secret.carshub_db_credentials.arn, "::secret:", ":${data.aws_caller_identity.current.account_id}:secret:")}:password::"
             }
           ]
           portMappings = [

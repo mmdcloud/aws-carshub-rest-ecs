@@ -9,6 +9,10 @@ data "aws_elb_service_account" "main" {}
 
 data "aws_caller_identity" "current" {}
 
+resource "random_id" "id" {
+  byte_length = 8
+}
+
 # -----------------------------------------------------------------------------------------
 # VPC Configuration
 # -----------------------------------------------------------------------------------------
@@ -255,6 +259,15 @@ module "carshub_db_credentials" {
     Name        = "carshub-rds-secret-${var.env}-${var.region}"
     Environment = var.env
     Project     = var.project
+  }
+}
+
+resource "aws_secretsmanager_secret_replication" "carshub_db_credentials_replica" {
+  secret_id = module.carshub_db_credentials.id
+
+  replicas {
+    region     = "us-west-2"
+    kms_key_id = "alias/aws/secretsmanager"
   }
 }
 
@@ -1291,7 +1304,7 @@ resource "aws_iam_role_policy_attachment" "ecs_task_xray" {
 module "carshub_frontend_ecs_log_group" {
   source            = "../../../modules/cloudwatch/cloudwatch-log-group"
   log_group_name    = "/aws/ecs/carshub-frontend-ecs-${var.env}-${var.region}"
-  skip_destroy      = /aws/lambda/
+  skip_destroy      = false
   retention_in_days = 0
   tags = {
     Name        = "/aws/ecs/carshub-frontend-ecs-${var.env}-${var.region}"

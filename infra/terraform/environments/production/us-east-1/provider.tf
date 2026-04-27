@@ -8,6 +8,10 @@ terraform {
       source  = "hashicorp/vault"
       version = "~> 4.0"
     }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.0"
+    }
   }
   # backend "s3" {
   #   bucket       = "carshubuseast1tfstate"
@@ -23,3 +27,5 @@ provider "aws" {
 }
 
 provider "vault" {}
+
+provider "random" {}
