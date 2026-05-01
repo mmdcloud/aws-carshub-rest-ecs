@@ -38,3 +38,8 @@ variable "azs" {
   type        = list(string)
   description = "Availability Zones"
 }
+
+variable "enable_waf" {
+  type    = bool
+  default = false
+}

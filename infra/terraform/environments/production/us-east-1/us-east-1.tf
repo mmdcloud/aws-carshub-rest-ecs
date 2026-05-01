@@ -248,26 +248,23 @@ module "carshub_lambda_sg" {
 # -----------------------------------------------------------------------------------------
 module "carshub_db_credentials" {
   source                  = "../../../modules/secrets-manager"
-  name                    = "carshub-rds-secret-${var.env}-${var.region}"
+  name                    = "carshub-rds-secrets-${var.env}-${var.region}"
   description             = "Secret for storing RDS credentials"
-  recovery_window_in_days = 7
+  recovery_window_in_days = 0
   secret_string = jsonencode({
     username = tostring(data.vault_generic_secret.rds.data["username"])
     password = tostring(data.vault_generic_secret.rds.data["password"])
   })
+  replica = [
+    {
+      region     = "us-west-2"
+      kms_key_id = "alias/aws/secretsmanager"
+    }
+  ]
   tags = {
-    Name        = "carshub-rds-secret-${var.env}-${var.region}"
+    Name        = "carshub-rds-secrets-${var.env}-${var.region}"
     Environment = var.env
     Project     = var.project
-  }
-}
-
-resource "aws_secretsmanager_secret_replication" "carshub_db_credentials_replica" {
-  secret_id = module.carshub_db_credentials.id
-
-  replicas {
-    region     = "us-west-2"
-    kms_key_id = "alias/aws/secretsmanager"
   }
 }
 
@@ -335,6 +332,10 @@ resource "aws_flow_log" "carshub_vpc_flow_log" {
   log_destination = module.carshub_flow_log_group.arn
   traffic_type    = "ALL"
   vpc_id          = module.carshub_vpc.vpc_id
+  depends_on = [
+    module.carshub_flow_log_group,
+    module.flow_logs_role
+  ]
 }
 
 # -----------------------------------------------------------------------------------------
@@ -992,7 +993,7 @@ module "carshub_media_update_function_iam_role" {
             {
               "Effect": "Allow",
               "Action": "secretsmanager:GetSecretValue",
-              "Resource": "arn:aws:secretsmanager:${var.region}:${data.aws_caller_identity.current.account_id}:secret:carshub-rds-secret-${var.env}-${var.region}-*"
+              "Resource": "arn:aws:secretsmanager:${var.region}:${data.aws_caller_identity.current.account_id}:secret:carshub-rds-secrets-${var.env}-${var.region}-*"
             },
             {
                 "Action": ["s3:GetObject", "s3:PutObject"],
@@ -1087,15 +1088,31 @@ module "carshub_media_cloudfront_distribution" {
   enabled                               = true
   origin = [
     {
-      origin_id           = "carshub-media-bucket-${var.env}"
+      origin_id           = "carshub-media-bucket-${var.env}-${var.region}"
       domain_name         = "carshub-media-bucket-${var.env}.s3.${var.region}.amazonaws.com"
+      connection_attempts = 3
+      connection_timeout  = 10
+    },
+    {
+      origin_id           = "carshub-media-bucket-${var.env}-us-west-2"
+      domain_name         = "carshub-media-bucket-${var.env}.s3.us-west-2.amazonaws.com"
       connection_attempts = 3
       connection_timeout  = 10
     }
   ]
+  origin_groups = [
+    {
+      origin_id    = "carshub-media-origin-group-${var.env}"
+      status_codes = [500, 502, 503, 504, 403, 404]
+      members = [
+        "carshub-media-bucket-${var.env}-${var.region}",
+        "carshub-media-bucket-${var.env}-us-west-2"
+      ]
+    }
+  ]
   compress                       = true
   smooth_streaming               = false
-  target_origin_id               = "carshub-media-bucket-${var.env}"
+  target_origin_id               = "carshub-media-origin-group-${var.env}"
   allowed_methods                = ["GET", "HEAD"]
   cached_methods                 = ["GET", "HEAD"]
   viewer_protocol_policy         = "redirect-to-https"
@@ -1264,20 +1281,17 @@ module "ecs_task_execution_role" {
                 "secretsmanager:DescribeSecret"
               ],
               "Resource": [
-                "${module.carshub_db_credentials.arn}"
+                "${module.carshub_db_credentials.arn}*"
               ]
             },
             {
-              "Action": [
-                "logs:CreateLogGroup",
-                "logs:CreateLogStream",
-                "logs:PutLogEvents"
-              ],
-              "Resource": [
-                "${module.carshub_frontend_ecs_log_group.arn}:*",
-                "${module.carshub_backend_ecs_log_group.arn}:*"
-              ],
-              "Effect": "Allow"
+                "Action": [
+                  "logs:CreateLogGroup",
+                  "logs:CreateLogStream",
+                  "logs:PutLogEvents"
+                ],
+                "Resource": "arn:aws:logs:*:*:*",
+                "Effect": "Allow"
             }
         ]
     }
@@ -1449,16 +1463,14 @@ module "carshub_cluster" {
             {
               name  = "DB_NAME"
               value = "${module.carshub_db.name}"
-            }
-          ]
-          secrets = [
-            {
-              name      = "UN"
-              valueFrom = "${replace(module.carshub_db_credentials.arn, "::secret:", ":${data.aws_caller_identity.current.account_id}:secret:")}:username::"
             },
             {
-              name      = "CREDS"
-              valueFrom = "${replace(module.carshub_db_credentials.arn, "::secret:", ":${data.aws_caller_identity.current.account_id}:secret:")}:password::"
+              name  = "UN"
+              value = "mohit"
+            },
+            {
+              name  = "CREDS"
+              value = "Mohitdixit12345!"
             }
           ]
           portMappings = [
@@ -1504,6 +1516,11 @@ module "carshub_cluster" {
     Environment = "${var.env}"
     Project     = var.project
   }
+  depends_on = [
+    module.carshub_frontend_ecs_log_group,
+    module.carshub_backend_ecs_log_group,
+    module.ecs_task_execution_role
+  ]
 }
 
 # Module for App Autoscaling Policy

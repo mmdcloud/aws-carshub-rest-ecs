@@ -53,3 +53,12 @@ variable "tags" {
   type = map(string)
   default = {}  
 }
+variable "origin_groups" {
+  description = "List of origin groups for failover"
+  type = list(object({
+    origin_id    = string
+    status_codes = list(number)
+    members      = list(string)  # list of origin_ids defined in var.origin
+  }))
+  default = []  # default empty so existing callers don't break
+}

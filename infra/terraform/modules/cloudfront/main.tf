@@ -4,7 +4,7 @@ resource "aws_cloudfront_origin_access_control" "origin_access_control" {
   description                       = var.oac_description
   origin_access_control_origin_type = var.oac_origin_access_control_origin_type
   signing_behavior                  = var.oac_signing_behavior
-  signing_protocol                  = var.oac_signing_protocol  
+  signing_protocol                  = var.oac_signing_protocol
 }
 
 # Configuring cloudfront distribution configuration
@@ -19,7 +19,26 @@ resource "aws_cloudfront_distribution" "distribution" {
       connection_attempts      = origin.value["connection_attempts"]
       connection_timeout       = origin.value["connection_timeout"]
     }
+  }  
+
+  dynamic "origin_group" {
+    for_each = var.origin_groups
+    content {
+      origin_id = origin_group.value["origin_id"]
+
+      failover_criteria {
+        status_codes = origin_group.value["status_codes"]
+      }
+
+      dynamic "member" {
+        for_each = origin_group.value["members"]
+        content {
+          origin_id = member.value
+        }
+      }
+    }
   }
+
   default_cache_behavior {
     compress         = var.compress
     smooth_streaming = var.smooth_streaming

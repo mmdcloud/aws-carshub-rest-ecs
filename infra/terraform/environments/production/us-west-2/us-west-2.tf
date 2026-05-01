@@ -21,8 +21,8 @@ resource "random_id" "id" {
   byte_length = 8
 }
 
-data "aws_secretsmanager_secret" "carshub_db_credentials" {  
-  name = "carshub-rds-secret-prod-us-east-1"
+data "aws_secretsmanager_secret" "carshub_db_credentials" {
+  name = "carshub-rds-secrets-prod-us-east-1"
 }
 
 # -----------------------------------------------------------------------------------------
@@ -31,7 +31,7 @@ data "aws_secretsmanager_secret" "carshub_db_credentials" {
 module "carshub_vpc" {
   source                  = "../../../modules/vpc"
   vpc_name                = "carshub-vpc-${var.env}-${var.region}"
-  vpc_cidr                = "10.0.0.0/16"
+  vpc_cidr                = "10.2.0.0/16"
   azs                     = var.azs
   public_subnets          = var.public_subnets
   private_subnets         = var.private_subnets
@@ -629,7 +629,6 @@ module "carshub_media_bucket" {
   ]
   bucket_policy = jsonencode({
     "Version" : "2012-10-17",
-    "Id" : "PolicyForCloudFrontPrivateContent",
     "Statement" : [
       {
         "Sid" : "AllowCloudFrontServicePrincipal",
@@ -638,17 +637,17 @@ module "carshub_media_bucket" {
           "Service" : "cloudfront.amazonaws.com"
         },
         "Action" : "s3:GetObject",
-        "Resource" : "${module.carshub_media_bucket.arn}/*",
+        "Resource" : "arn:aws:s3:::carshub-media-bucket-${var.env}-${var.region}/*",
         "Condition" : {
           "StringEquals" : {
-            "AWS:SourceArn" : "${module.carshub_media_cloudfront_distribution.arn}"
+            "AWS:SourceArn" : var.cloudfront_distribution_arn
           }
         }
       },
       {
-        "Sid":     "AllowCRRFromPrimary",
-        "Effect":  "Allow",
-        "Principal": {
+        "Sid" : "AllowCRRFromPrimary",
+        "Effect" : "Allow",
+        "Principal" : {
           "AWS" : "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/carshub-s3-replication-role-${var.env}-us-east-1"
         },
         "Action" : [
@@ -1134,43 +1133,43 @@ module "carshub_media_update_function" {
 # -----------------------------------------------------------------------------------------
 # Cloudfront distribution
 # -----------------------------------------------------------------------------------------
-module "carshub_media_cloudfront_distribution" {
-  source                                = "../../../modules/cloudfront"
-  distribution_name                     = "carshub-media-cdn-${var.env}-${var.region}"
-  oac_name                              = "carshub-media-cdn-oac-${var.env}-${var.region}"
-  oac_description                       = "carshub-media-cdn-oac-${var.env}-${var.region}"
-  oac_origin_access_control_origin_type = "s3"
-  oac_signing_behavior                  = "always"
-  oac_signing_protocol                  = "sigv4"
-  enabled                               = true
-  origin = [
-    {
-      origin_id           = "carshub-media-bucket-${var.env}"
-      domain_name         = "carshub-media-bucket-${var.env}.s3.${var.region}.amazonaws.com"
-      connection_attempts = 3
-      connection_timeout  = 10
-    }
-  ]
-  compress                       = true
-  smooth_streaming               = false
-  target_origin_id               = "carshub-media-bucket-${var.env}"
-  allowed_methods                = ["GET", "HEAD"]
-  cached_methods                 = ["GET", "HEAD"]
-  viewer_protocol_policy         = "redirect-to-https"
-  min_ttl                        = 0
-  default_ttl                    = 86400
-  max_ttl                        = 31536000
-  price_class                    = "PriceClass_200"
-  forward_cookies                = "all"
-  cloudfront_default_certificate = true
-  geo_restriction_type           = "none"
-  query_string                   = true
-  tags = {
-    Name        = "carshub-media-cdn-${var.env}-${var.region}"
-    Environment = "${var.env}"
-    Project     = var.project
-  }
-}
+# module "carshub_media_cloudfront_distribution" {
+#   source                                = "../../../modules/cloudfront"
+#   distribution_name                     = "carshub-media-cdn-${var.env}-${var.region}"
+#   oac_name                              = "carshub-media-cdn-oac-${var.env}-${var.region}"
+#   oac_description                       = "carshub-media-cdn-oac-${var.env}-${var.region}"
+#   oac_origin_access_control_origin_type = "s3"
+#   oac_signing_behavior                  = "always"
+#   oac_signing_protocol                  = "sigv4"
+#   enabled                               = true
+#   origin = [
+#     {
+#       origin_id           = "carshub-media-bucket-${var.env}"
+#       domain_name         = "carshub-media-bucket-${var.env}.s3.${var.region}.amazonaws.com"
+#       connection_attempts = 3
+#       connection_timeout  = 10
+#     }
+#   ]
+#   compress                       = true
+#   smooth_streaming               = false
+#   target_origin_id               = "carshub-media-bucket-${var.env}"
+#   allowed_methods                = ["GET", "HEAD"]
+#   cached_methods                 = ["GET", "HEAD"]
+#   viewer_protocol_policy         = "redirect-to-https"
+#   min_ttl                        = 0
+#   default_ttl                    = 86400
+#   max_ttl                        = 31536000
+#   price_class                    = "PriceClass_200"
+#   forward_cookies                = "all"
+#   cloudfront_default_certificate = true
+#   geo_restriction_type           = "none"
+#   query_string                   = true
+#   tags = {
+#     Name        = "carshub-media-cdn-${var.env}-${var.region}"
+#     Environment = "${var.env}"
+#     Project     = var.project
+#   }
+# }
 
 # -----------------------------------------------------------------------------------------
 # Load Balancer Configuration
@@ -1340,7 +1339,7 @@ module "ecs_task_execution_role" {
         ]
     }
     EOF
-    tags = {
+  tags = {
     Name        = "carshub-ecs-task-execution-role-${var.env}-${var.region}"
     Environment = "${var.env}"
     Project     = var.project
@@ -2071,10 +2070,11 @@ JSON
 # WAF Configuration
 # -----------------------------------------------------------------------------------------
 module "carshub_waf" {
+  count  = var.enable_waf ? 1 : 0
   source = "../../../modules/waf"
 
   # Naming — matches your existing convention
-  name = "carshub-${var.env}-${var.region}"
+  name = "carshub-waf-${var.env}-${var.region}"
 
   # Attach WAF to the public-facing Frontend ALB
   # Replace with your actual frontend ALB ARN output
