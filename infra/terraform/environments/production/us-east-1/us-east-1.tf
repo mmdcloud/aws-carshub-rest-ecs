@@ -191,7 +191,7 @@ module "carshub_rds_sg" {
       protocol        = "tcp"
       security_groups = [module.carshub_ecs_backend_sg.id]
       cidr_blocks     = []
-    },
+    }
   ]
   egress_rules = [
     {
@@ -219,15 +219,7 @@ module "carshub_lambda_sg" {
 
   egress_rules = [
     {
-      description     = "MySQL to RDS"
-      from_port       = 3306
-      to_port         = 3306
-      protocol        = "tcp"
-      cidr_blocks     = []
-      security_groups = [module.carshub_rds_sg.id]
-    },
-    {
-      description     = "HTTPS to S3"
+      description     = "HTTPS to VPC endpoints and internet"
       from_port       = 443
       to_port         = 443
       protocol        = "tcp"
@@ -238,6 +230,57 @@ module "carshub_lambda_sg" {
 
   tags = {
     Name        = "carshub-lambda-sg-${var.env}-${var.region}"
+    Environment = var.env
+    Project     = var.project
+  }
+}
+
+resource "aws_security_group_rule" "lambda_to_rds_egress" {
+  type                     = "egress"
+  from_port                = 3306
+  to_port                  = 3306
+  protocol                 = "tcp"
+  security_group_id        = module.carshub_lambda_sg.id
+  source_security_group_id = module.carshub_rds_sg.id
+  description              = "MySQL to RDS"
+}
+
+resource "aws_security_group_rule" "rds_from_lambda_ingress" {
+  type                     = "ingress"
+  from_port                = 3306
+  to_port                  = 3306
+  protocol                 = "tcp"
+  security_group_id        = module.carshub_rds_sg.id
+  source_security_group_id = module.carshub_lambda_sg.id
+  description              = "MySQL from Lambda"
+}
+
+module "carshub_vpc_endpoint_sg" {
+  source = "../../../modules/security-groups"
+  name   = "carshub-vpc-endpoint-sg-${var.env}-${var.region}"
+  vpc_id = module.carshub_vpc.vpc_id
+  ingress_rules = [
+    {
+      description     = "HTTPS from Lambda"
+      from_port       = 443
+      to_port         = 443
+      protocol        = "tcp"
+      security_groups = [module.carshub_lambda_sg.id]
+      cidr_blocks     = []
+    }
+  ]
+  egress_rules = [
+    {
+      description     = "Allow all outbound"
+      from_port       = 0
+      to_port         = 0
+      protocol        = "-1"
+      cidr_blocks     = ["0.0.0.0/0"]
+      security_groups = []
+    }
+  ]
+  tags = {
+    Name        = "carshub-vpc-endpoint-sg-${var.env}-${var.region}"
     Environment = var.env
     Project     = var.project
   }
@@ -1040,6 +1083,22 @@ resource "aws_lambda_layer_version" "python_layer" {
   filename            = "../../../files/python.zip"
   layer_name          = "python"
   compatible_runtimes = ["python3.12"]
+}
+
+resource "aws_vpc_endpoint" "secretsmanager" {
+  vpc_id              = module.carshub_vpc.vpc_id
+  service_name        = "com.amazonaws.${var.region}.secretsmanager"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = module.carshub_vpc.private_subnets
+  security_group_ids  = [module.carshub_vpc_endpoint_sg.id]
+  private_dns_enabled = true
+}
+
+resource "aws_vpc_endpoint" "s3" {
+  vpc_id            = module.carshub_vpc.vpc_id
+  service_name      = "com.amazonaws.${var.region}.s3"
+  vpc_endpoint_type = "Gateway"
+  route_table_ids   = module.carshub_vpc.private_route_table_ids
 }
 
 # Lambda function to update media metadata in RDS database
