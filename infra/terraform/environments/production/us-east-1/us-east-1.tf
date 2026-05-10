@@ -1465,12 +1465,12 @@ module "carshub_cluster" {
           ]
           environment = [
             {
-              name = "HOSTNAME", value = "0.0.0.0" 
+              name = "HOSTNAME", value = "0.0.0.0"
             },
             {
               name  = "BASE_URL"
               value = "${module.carshub_backend_lb.dns_name}"
-            }          
+            }
           ]
           readonlyRootFilesystem = false
           logConfiguration = {
