@@ -13,12 +13,6 @@ export const databaseProviders = [
     {
         provide: 'SEQUELIZE',
         useFactory: async () => {
-            console.log('=== DB ENV VARS ===');
-            console.log('DB_PATH:', process.env.DB_PATH);
-            console.log('DB_NAME:', process.env.DB_NAME);
-            console.log('UN:', process.env.UN);        // don't log actual value
-            console.log('CREDS:', process.env.CREDS); // don't log actual value
-            console.log('==================');
             const sequelize = new Sequelize({
                 dialect: 'mysql',
                 host: process.env.DB_PATH,

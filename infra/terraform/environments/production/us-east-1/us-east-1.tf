@@ -1324,6 +1324,16 @@ module "ecs_task_execution_role" {
         "Version": "2012-10-17",
         "Statement": [
             {
+              "Effect": "Allow",
+              "Action": [
+                "ssmmessages:CreateControlChannel",
+                "ssmmessages:CreateDataChannel",
+                "ssmmessages:OpenControlChannel",
+                "ssmmessages:OpenDataChannel"
+              ],
+              "Resource": "*"
+            },
+            {
                 "Action": [
                   "s3:PutObject"
                 ],
@@ -1347,9 +1357,13 @@ module "ecs_task_execution_role" {
                 "Action": [
                   "logs:CreateLogGroup",
                   "logs:CreateLogStream",
+                  "logs:PutLogEvents",
+                  "logs:DescribeLogGroups",
+                  "logs:CreateLogStream",
+                  "logs:DescribeLogStreams",
                   "logs:PutLogEvents"
                 ],
-                "Resource": "arn:aws:logs:*:*:*",
+                "Resource": "*",
                 "Effect": "Allow"
             }
         ]
@@ -1409,6 +1423,7 @@ module "carshub_cluster" {
       iam_role_arn           = module.ecs_task_execution_role.arn
       desired_count          = 2
       assign_public_ip       = false
+      enable_execute_command = true
       deployment_controller = {
         type = "ECS"
       }
@@ -1427,7 +1442,11 @@ module "carshub_cluster" {
           essential = true
           image     = "${module.carshub_frontend_container_registry.repository_url}:latest"
           healthCheck = {
-            command = ["CMD-SHELL", "curl -f http://localhost:3000/auth/signin || exit 1"]
+            command     = ["CMD-SHELL", "wget -qO- http://localhost:3000/auth/signin || exit 1"]
+            interval    = 30
+            timeout     = 10
+            retries     = 3
+            startPeriod = 60
           }
           ulimits = [
             {
@@ -1446,9 +1465,12 @@ module "carshub_cluster" {
           ]
           environment = [
             {
+              name = "HOSTNAME", value = "0.0.0.0" 
+            },
+            {
               name  = "BASE_URL"
               value = "${module.carshub_backend_lb.dns_name}"
-            }
+            }          
           ]
           readonlyRootFilesystem = false
           logConfiguration = {
@@ -1462,8 +1484,8 @@ module "carshub_cluster" {
           memoryReservation = 100
           restartPolicy = {
             enabled              = true
-            ignoredExitCodes     = [1]
-            restartAttemptPeriod = 60
+            ignoredExitCodes     = []
+            restartAttemptPeriod = 300 # increase to 5 min to prevent rapid cycling
           }
         }
       }
@@ -1487,6 +1509,7 @@ module "carshub_cluster" {
       iam_role_arn           = module.ecs_task_execution_role.arn
       desired_count          = 2
       assign_public_ip       = false
+      enable_execute_command = true
       deployment_controller = {
         type = "ECS"
       }
@@ -1505,7 +1528,11 @@ module "carshub_cluster" {
           essential = true
           image     = "${module.carshub_backend_container_registry.repository_url}:latest"
           healthCheck = {
-            command = ["CMD-SHELL", "curl -f http://localhost:80 || exit 1"]
+            command     = ["CMD-SHELL", "wget -qO- http://localhost:80 || exit 1"]
+            interval    = 30
+            timeout     = 10
+            retries     = 3
+            startPeriod = 120
           }
           ulimits = [
             {
@@ -1552,8 +1579,8 @@ module "carshub_cluster" {
           memoryReservation = 100
           restartPolicy = {
             enabled              = true
-            ignoredExitCodes     = [1]
-            restartAttemptPeriod = 60
+            ignoredExitCodes     = []
+            restartAttemptPeriod = 300 # increase to 5 min to prevent rapid cycling
           }
         }
       }
@@ -2095,81 +2122,81 @@ JSON
 # -----------------------------------------------------------------------------------------
 # WAF Configuration
 # -----------------------------------------------------------------------------------------
-module "carshub_waf" {
-  source = "../../../modules/waf"
+# module "carshub_waf" {
+#   source = "../../../modules/waf"
 
-  # Naming — matches your existing convention
-  name = "carshub-waf-${var.env}-${var.region}"
+#   # Naming — matches your existing convention
+#   name = "carshub-waf-${var.env}-${var.region}"
 
-  # Attach WAF to the public-facing Frontend ALB
-  # Replace with your actual frontend ALB ARN output
-  frontend_alb_arn = module.carshub_frontend_lb.arn
+#   # Attach WAF to the public-facing Frontend ALB
+#   # Replace with your actual frontend ALB ARN output
+#   frontend_alb_arn = module.carshub_frontend_lb.arn
 
-  # Reuse your existing SNS alarm topic — no new infra needed
-  alarm_topic_arn = module.carshub_alarm_notifications.topic_arn
+#   # Reuse your existing SNS alarm topic — no new infra needed
+#   alarm_topic_arn = module.carshub_alarm_notifications.topic_arn
 
-  # Account + region for log resource policy
-  account_id = data.aws_caller_identity.current.account_id
-  aws_region = var.region
+#   # Account + region for log resource policy
+#   account_id = data.aws_caller_identity.current.account_id
+#   aws_region = var.region
 
-  # ---------------------------------------------------
-  # IP Management
-  # ---------------------------------------------------
+#   # ---------------------------------------------------
+#   # IP Management
+#   # ---------------------------------------------------
 
-  # IPs to always block — add known attackers, threat intel here
-  blocked_ip_list = [
-    # "203.0.113.0/24",  # Example: known scanner range
-  ]
+#   # IPs to always block — add known attackers, threat intel here
+#   blocked_ip_list = [
+#     # "203.0.113.0/24",  # Example: known scanner range
+#   ]
 
-  # IPs that bypass rate limiting — office, CI/CD, trusted partners
-  allowed_ip_list = [
-    # "YOUR_OFFICE_IP/32",
-    # "YOUR_CICD_RUNNER_IP/32",
-  ]
+#   # IPs that bypass rate limiting — office, CI/CD, trusted partners
+#   allowed_ip_list = [
+#     # "YOUR_OFFICE_IP/32",
+#     # "YOUR_CICD_RUNNER_IP/32",
+#   ]
 
-  # ---------------------------------------------------
-  # Geo Blocking
-  # ---------------------------------------------------
+#   # ---------------------------------------------------
+#   # Geo Blocking
+#   # ---------------------------------------------------
 
-  # Block countries not in your target market
-  # Remove or leave empty [] if you serve global traffic
-  blocked_countries = [
-    # "KP",  # North Korea
-    # "IR",  # Iran
-    # "CU",  # Cuba
-    # "SY",  # Syria
-  ]
+#   # Block countries not in your target market
+#   # Remove or leave empty [] if you serve global traffic
+#   blocked_countries = [
+#     # "KP",  # North Korea
+#     # "IR",  # Iran
+#     # "CU",  # Cuba
+#     # "SY",  # Syria
+#   ]
 
-  # ---------------------------------------------------
-  # Rate Limiting
-  # ---------------------------------------------------
+#   # ---------------------------------------------------
+#   # Rate Limiting
+#   # ---------------------------------------------------
 
-  # General rate limit per IP per 5-minute window
-  # 2000 = ~6-7 requests/second — comfortable for real users, blocks bots
-  rate_limit_requests = 2000
+#   # General rate limit per IP per 5-minute window
+#   # 2000 = ~6-7 requests/second — comfortable for real users, blocks bots
+#   rate_limit_requests = 2000
 
-  # Auth endpoints get a much tighter limit
-  # 100 = ~1 login attempt every 3 seconds per IP
-  auth_rate_limit_requests = 100
+#   # Auth endpoints get a much tighter limit
+#   # 100 = ~1 login attempt every 3 seconds per IP
+#   auth_rate_limit_requests = 100
 
-  # ---------------------------------------------------
-  # Logging
-  # ---------------------------------------------------
+#   # ---------------------------------------------------
+#   # Logging
+#   # ---------------------------------------------------
 
-  # How long to keep WAF logs in CloudWatch
-  log_retention_days = 90
+#   # How long to keep WAF logs in CloudWatch
+#   log_retention_days = 90
 
-  # ---------------------------------------------------
-  # Alarm Thresholds — tune after observing normal traffic
-  # ---------------------------------------------------
+#   # ---------------------------------------------------
+#   # Alarm Thresholds — tune after observing normal traffic
+#   # ---------------------------------------------------
 
-  alarm_blocked_requests_threshold = 500
-  alarm_rate_limit_threshold       = 100
-  alarm_auth_rate_limit_threshold  = 20
+#   alarm_blocked_requests_threshold = 500
+#   alarm_rate_limit_threshold       = 100
+#   alarm_auth_rate_limit_threshold  = 20
 
-  tags = {
-    Name        = "carshub-waf-${var.env}-${var.region}"
-    Environment = var.env
-    Project     = var.project
-  }
-}
+#   tags = {
+#     Name        = "carshub-waf-${var.env}-${var.region}"
+#     Environment = var.env
+#     Project     = var.project
+#   }
+# }
