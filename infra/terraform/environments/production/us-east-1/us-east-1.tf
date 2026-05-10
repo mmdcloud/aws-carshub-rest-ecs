@@ -1609,22 +1609,24 @@ module "carshub_cluster" {
   ]
 }
 
-# Module for App Autoscaling Policy
-module "carshub_frontend_app_autoscaling_policy" {
+# Module for Frontend CPU Autoscaling Policy
+module "carshub_frontend_cpu_autoscaling" {
   source             = "../../../modules/autoscaling"
   min_capacity       = 2
   max_capacity       = 10
   resource_id        = "service/${module.carshub_cluster.cluster_name}/${module.carshub_cluster.services["ecs_frontend"].name}"
   scalable_dimension = "ecs:service:DesiredCount"
   service_namespace  = "ecs"
+
   policies = [
     {
-      name        = "worker-scale-up"
+      name        = "carshub-frontend-cpu-scale-up-${var.env}"
       policy_type = "StepScaling"
       step_scaling_policy_configuration = {
-        adjustment_type         = "ChangeInCapacity"
-        cooldown                = 60
-        metric_aggregation_type = "Average"
+        adjustment_type          = "ChangeInCapacity"
+        cooldown                 = 60
+        metric_aggregation_type  = "Average"
+        min_adjustment_magnitude = null
         step_adjustment = [
           {
             metric_interval_lower_bound = 0
@@ -1633,29 +1635,111 @@ module "carshub_frontend_app_autoscaling_policy" {
           },
           {
             metric_interval_lower_bound = 20
+            metric_interval_upper_bound = null
             scaling_adjustment          = 2
           }
         ]
       }
+      predictive_scaling_policy_configuration  = null
+      target_tracking_scaling_policy_configuration = null
+    },
+    {
+      name        = "carshub-frontend-cpu-scale-down-${var.env}"
+      policy_type = "StepScaling"
+      step_scaling_policy_configuration = {
+        adjustment_type          = "ChangeInCapacity"
+        cooldown                 = 300
+        metric_aggregation_type  = "Average"
+        min_adjustment_magnitude = null
+        step_adjustment = [
+          {
+            metric_interval_lower_bound = null
+            metric_interval_upper_bound = 0
+            scaling_adjustment          = -1
+          }
+        ]
+      }
+      predictive_scaling_policy_configuration      = null
+      target_tracking_scaling_policy_configuration = null
     }
   ]
+  depends_on = [module.carshub_cluster]
 }
 
-module "carshub_backend_app_autoscaling_policy" {
+module "carshub_frontend_memory_autoscaling" {
+  source             = "../../../modules/autoscaling"
+  min_capacity       = 2
+  max_capacity       = 10
+  resource_id        = "service/${module.carshub_cluster.cluster_name}/${module.carshub_cluster.services["ecs_frontend"].name}"
+  scalable_dimension = "ecs:service:DesiredCount"
+  service_namespace  = "ecs"
+
+  policies = [
+    {
+      name        = "carshub-frontend-memory-scale-up-${var.env}"
+      policy_type = "StepScaling"
+      step_scaling_policy_configuration = {
+        adjustment_type          = "ChangeInCapacity"
+        cooldown                 = 60
+        metric_aggregation_type  = "Average"
+        min_adjustment_magnitude = null
+        step_adjustment = [
+          {
+            metric_interval_lower_bound = 0
+            metric_interval_upper_bound = 20
+            scaling_adjustment          = 1
+          },
+          {
+            metric_interval_lower_bound = 20
+            metric_interval_upper_bound = null
+            scaling_adjustment          = 2
+          }
+        ]
+      }
+      predictive_scaling_policy_configuration      = null
+      target_tracking_scaling_policy_configuration = null
+    },
+    {
+      name        = "carshub-frontend-memory-scale-down-${var.env}"
+      policy_type = "StepScaling"
+      step_scaling_policy_configuration = {
+        adjustment_type          = "ChangeInCapacity"
+        cooldown                 = 300
+        metric_aggregation_type  = "Average"
+        min_adjustment_magnitude = null
+        step_adjustment = [
+          {
+            metric_interval_lower_bound = null
+            metric_interval_upper_bound = 0
+            scaling_adjustment          = -1
+          }
+        ]
+      }
+      predictive_scaling_policy_configuration      = null
+      target_tracking_scaling_policy_configuration = null
+    }
+  ]
+
+  depends_on = [module.carshub_cluster]
+}
+
+module "carshub_backend_cpu_autoscaling" {
   source             = "../../../modules/autoscaling"
   min_capacity       = 2
   max_capacity       = 10
   resource_id        = "service/${module.carshub_cluster.cluster_name}/${module.carshub_cluster.services["ecs_backend"].name}"
   scalable_dimension = "ecs:service:DesiredCount"
   service_namespace  = "ecs"
+
   policies = [
     {
-      name        = "worker-scale-up"
+      name        = "carshub-backend-cpu-scale-up-${var.env}"
       policy_type = "StepScaling"
       step_scaling_policy_configuration = {
-        adjustment_type         = "ChangeInCapacity"
-        cooldown                = 60
-        metric_aggregation_type = "Average"
+        adjustment_type          = "ChangeInCapacity"
+        cooldown                 = 60
+        metric_aggregation_type  = "Average"
+        min_adjustment_magnitude = null
         step_adjustment = [
           {
             metric_interval_lower_bound = 0
@@ -1664,13 +1748,156 @@ module "carshub_backend_app_autoscaling_policy" {
           },
           {
             metric_interval_lower_bound = 20
+            metric_interval_upper_bound = null
             scaling_adjustment          = 2
           }
         ]
       }
+      predictive_scaling_policy_configuration      = null
+      target_tracking_scaling_policy_configuration = null
+    },
+    {
+      name        = "carshub-backend-cpu-scale-down-${var.env}"
+      policy_type = "StepScaling"
+      step_scaling_policy_configuration = {
+        adjustment_type          = "ChangeInCapacity"
+        cooldown                 = 300
+        metric_aggregation_type  = "Average"
+        min_adjustment_magnitude = null
+        step_adjustment = [
+          {
+            metric_interval_lower_bound = null
+            metric_interval_upper_bound = 0
+            scaling_adjustment          = -1
+          }
+        ]
+      }
+      predictive_scaling_policy_configuration      = null
+      target_tracking_scaling_policy_configuration = null
     }
   ]
+
+  depends_on = [module.carshub_cluster]
 }
+
+module "carshub_backend_memory_autoscaling" {
+  source             = "../../../modules/autoscaling"
+  min_capacity       = 2
+  max_capacity       = 10
+  resource_id        = "service/${module.carshub_cluster.cluster_name}/${module.carshub_cluster.services["ecs_backend"].name}"
+  scalable_dimension = "ecs:service:DesiredCount"
+  service_namespace  = "ecs"
+
+  policies = [
+    {
+      name        = "carshub-backend-memory-scale-up-${var.env}"
+      policy_type = "StepScaling"
+      step_scaling_policy_configuration = {
+        adjustment_type          = "ChangeInCapacity"
+        cooldown                 = 60
+        metric_aggregation_type  = "Average"
+        min_adjustment_magnitude = null
+        step_adjustment = [
+          {
+            metric_interval_lower_bound = 0
+            metric_interval_upper_bound = 20
+            scaling_adjustment          = 1
+          },
+          {
+            metric_interval_lower_bound = 20
+            metric_interval_upper_bound = null
+            scaling_adjustment          = 2
+          }
+        ]
+      }
+      predictive_scaling_policy_configuration      = null
+      target_tracking_scaling_policy_configuration = null
+    },
+    {
+      name        = "carshub-backend-memory-scale-down-${var.env}"
+      policy_type = "StepScaling"
+      step_scaling_policy_configuration = {
+        adjustment_type          = "ChangeInCapacity"
+        cooldown                 = 300
+        metric_aggregation_type  = "Average"
+        min_adjustment_magnitude = null
+        step_adjustment = [
+          {
+            metric_interval_lower_bound = null
+            metric_interval_upper_bound = 0
+            scaling_adjustment          = -1
+          }
+        ]
+      }
+      predictive_scaling_policy_configuration      = null
+      target_tracking_scaling_policy_configuration = null
+    }
+  ]
+
+  depends_on = [module.carshub_cluster]
+}
+
+# module "carshub_frontend_app_autoscaling_policy" {
+#   source             = "../../../modules/autoscaling"
+#   min_capacity       = 2
+#   max_capacity       = 10
+#   resource_id        = "service/${module.carshub_cluster.cluster_name}/${module.carshub_cluster.services["ecs_frontend"].name}"
+#   scalable_dimension = "ecs:service:DesiredCount"
+#   service_namespace  = "ecs"
+#   policies = [
+#     {
+#       name        = "worker-scale-up"
+#       policy_type = "StepScaling"
+#       step_scaling_policy_configuration = {
+#         adjustment_type         = "ChangeInCapacity"
+#         cooldown                = 60
+#         metric_aggregation_type = "Average"
+#         step_adjustment = [
+#           {
+#             metric_interval_lower_bound = 0
+#             metric_interval_upper_bound = 20
+#             scaling_adjustment          = 1
+#           },
+#           {
+#             metric_interval_lower_bound = 20
+#             scaling_adjustment          = 2
+#           }
+#         ]
+#       }
+#     }
+#   ]
+# }
+
+# module "carshub_backend_app_autoscaling_policy" {
+#   source             = "../../../modules/autoscaling"
+#   min_capacity       = 2
+#   max_capacity       = 10
+#   resource_id        = "service/${module.carshub_cluster.cluster_name}/${module.carshub_cluster.services["ecs_backend"].name}"
+#   scalable_dimension = "ecs:service:DesiredCount"
+#   service_namespace  = "ecs"
+#   policies = [
+#     {
+#       name        = "worker-scale-up"
+#       policy_type = "StepScaling"
+#       step_scaling_policy_configuration = {
+#         adjustment_type         = "ChangeInCapacity"
+#         cooldown                = 60
+#         metric_aggregation_type = "Average"
+#         step_adjustment = [
+#           {
+#             metric_interval_lower_bound = 0
+#             metric_interval_upper_bound = 20
+#             scaling_adjustment          = 1
+#           },
+#           {
+#             metric_interval_lower_bound = 20
+#             scaling_adjustment          = 2
+#           }
+#         ]
+#       }
+#     }
+#   ]
+# }
 
 # -----------------------------------------------------------------------------------------
 # Cloudwath Alarm Configuration
