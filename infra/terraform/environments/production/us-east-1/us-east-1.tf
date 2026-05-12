@@ -88,7 +88,7 @@ module "carshub_backend_lb_sg" {
       from_port       = 80
       to_port         = 80
       protocol        = "tcp"
-      security_groups = [module.carshub_ecs_frontend_sg.id] 
+      security_groups = [module.carshub_ecs_frontend_sg.id]
       cidr_blocks     = []
     },
     {
@@ -96,7 +96,7 @@ module "carshub_backend_lb_sg" {
       from_port       = 443
       to_port         = 443
       protocol        = "tcp"
-      security_groups = [module.carshub_ecs_frontend_sg.id] 
+      security_groups = [module.carshub_ecs_frontend_sg.id]
       cidr_blocks     = []
     }
   ]
@@ -1116,7 +1116,7 @@ module "carshub_media_update_function" {
   }
   env_variables = {
     SECRET_NAME = module.carshub_db_credentials.name
-    DB_HOST     = module.carshub_db.address
+    DB_HOST     = tostring(split(":", module.carshub_db.endpoint)[0])
     DB_NAME     = var.db_name
     REGION      = var.region
   }
@@ -1549,14 +1549,16 @@ module "carshub_cluster" {
             {
               name  = "DB_NAME"
               value = "${module.carshub_db.name}"
+            }
+          ]
+          secrets = [
+            {
+              name      = "UN"
+              valueFrom = "${module.carshub_db_credentials.arn}:username::"
             },
             {
-              name  = "UN"
-              value = "mohit"
-            },
-            {
-              name  = "CREDS"
-              value = "Mohitdixit12345!"
+              name      = "CREDS"
+              valueFrom = "${module.carshub_db_credentials.arn}:password::"
             }
           ]
           portMappings = [
@@ -1640,7 +1642,7 @@ module "carshub_frontend_cpu_autoscaling" {
           }
         ]
       }
-      predictive_scaling_policy_configuration  = null
+      predictive_scaling_policy_configuration      = null
       target_tracking_scaling_policy_configuration = null
     },
     {
@@ -1836,68 +1838,6 @@ module "carshub_backend_memory_autoscaling" {
 
   depends_on = [module.carshub_cluster]
 }
-
-# module "carshub_frontend_app_autoscaling_policy" {
-#   source             = "../../../modules/autoscaling"
-#   min_capacity       = 2
-#   max_capacity       = 10
-#   resource_id        = "service/${module.carshub_cluster.cluster_name}/${module.carshub_cluster.services["ecs_frontend"].name}"
-#   scalable_dimension = "ecs:service:DesiredCount"
-#   service_namespace  = "ecs"
-#   policies = [
-#     {
-#       name        = "worker-scale-up"
-#       policy_type = "StepScaling"
-#       step_scaling_policy_configuration = {
-#         adjustment_type         = "ChangeInCapacity"
-#         cooldown                = 60
-#         metric_aggregation_type = "Average"
-#         step_adjustment = [
-#           {
-#             metric_interval_lower_bound = 0
-#             metric_interval_upper_bound = 20
-#             scaling_adjustment          = 1
-#           },
-#           {
-#             metric_interval_lower_bound = 20
-#             scaling_adjustment          = 2
-#           }
-#         ]
-#       }
-#     }
-#   ]
-# }
-
-# module "carshub_backend_app_autoscaling_policy" {
-#   source             = "../../../modules/autoscaling"
-#   min_capacity       = 2
-#   max_capacity       = 10
-#   resource_id        = "service/${module.carshub_cluster.cluster_name}/${module.carshub_cluster.services["ecs_backend"].name}"
-#   scalable_dimension = "ecs:service:DesiredCount"
-#   service_namespace  = "ecs"
-#   policies = [
-#     {
-#       name        = "worker-scale-up"
-#       policy_type = "StepScaling"
-#       step_scaling_policy_configuration = {
-#         adjustment_type         = "ChangeInCapacity"
-#         cooldown                = 60
-#         metric_aggregation_type = "Average"
-#         step_adjustment = [
-#           {
-#             metric_interval_lower_bound = 0
-#             metric_interval_upper_bound = 20
-#             scaling_adjustment          = 1
-#           },
-#           {
-#             metric_interval_lower_bound = 20
-#             scaling_adjustment          = 2
-#           }
-#         ]
-#       }
-#     }
-#   ]
-# }
 
 # -----------------------------------------------------------------------------------------
 # Cloudwath Alarm Configuration
