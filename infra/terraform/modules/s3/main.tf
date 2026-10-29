@@ -10,20 +10,24 @@ resource "aws_s3_bucket" "bucket" {
   )
 }
 
-# Creating object
-resource "aws_s3_object" "object" {
-  count  = length(var.objects)
-  bucket = aws_s3_bucket.bucket.id
-  source = var.objects[count.index].source
-  key    = var.objects[count.index].key
-}
-
 # Bucket versioning configuration
 resource "aws_s3_bucket_versioning" "versioning" {
   bucket = aws_s3_bucket.bucket.id
   versioning_configuration {
     status = var.versioning_enabled
   }
+}
+
+# Creating object
+resource "aws_s3_object" "object" {
+  count       = length(var.objects)
+  bucket      = aws_s3_bucket.bucket.id
+  source      = var.objects[count.index].source != "" ? var.objects[count.index].source : null
+  key         = var.objects[count.index].key
+  etag        = try(filemd5(var.objects[count.index].source), null)
+  source_hash = try(filemd5(var.objects[count.index].source), null)
+
+  depends_on = [aws_s3_bucket_versioning.versioning]
 }
 
 # Bucket cors configuration

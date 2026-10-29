@@ -14,6 +14,19 @@ resource "random_id" "id" {
 }
 
 # -----------------------------------------------------------------------------------------
+# Globally unique S3 bucket naming
+# -----------------------------------------------------------------------------------------
+locals {
+  account_id = data.aws_caller_identity.current.account_id
+
+  media_bucket_name             = "carshub-media-bucket-${local.account_id}-${var.env}-${var.region}"
+  media_update_code_bucket_name = "carshub-media-update-code-${local.account_id}-${var.env}-${var.region}"
+  frontend_lb_logs_bucket_name  = "carshub-frontend-lb-logs-${local.account_id}-${var.env}-${var.region}"
+  backend_lb_logs_bucket_name   = "carshub-backend-lb-logs-${local.account_id}-${var.env}-${var.region}"
+  media_signed_code_bucket_name = "carshub-media-signed-code-${local.account_id}-${var.env}-${var.region}"
+}
+
+# -----------------------------------------------------------------------------------------
 # VPC Configuration
 # -----------------------------------------------------------------------------------------
 module "carshub_vpc" {
@@ -154,9 +167,17 @@ module "carshub_ecs_backend_sg" {
   vpc_id = module.carshub_vpc.vpc_id
   ingress_rules = [
     {
-      description     = "Traffic from Backend ALB"
+      description     = "Traffic from Backend ALB (port 80)"
       from_port       = 80
       to_port         = 80
+      protocol        = "tcp"
+      security_groups = [module.carshub_backend_lb_sg.id]
+      cidr_blocks     = []
+    },
+    {
+      description     = "Traffic from Backend ALB (port 3000)"
+      from_port       = 3000
+      to_port         = 3000
       protocol        = "tcp"
       security_groups = [module.carshub_backend_lb_sg.id]
       cidr_blocks     = []
@@ -261,11 +282,11 @@ module "carshub_vpc_endpoint_sg" {
   vpc_id = module.carshub_vpc.vpc_id
   ingress_rules = [
     {
-      description     = "HTTPS from Lambda"
+      description     = "HTTPS from Lambda and Backend ECS"
       from_port       = 443
       to_port         = 443
       protocol        = "tcp"
-      security_groups = [module.carshub_lambda_sg.id]
+      security_groups = [module.carshub_lambda_sg.id, module.carshub_ecs_backend_sg.id]
       cidr_blocks     = []
     }
   ]
@@ -451,7 +472,8 @@ resource "null_resource" "build_and_push_frontend" {
   }
 
   provisioner "local-exec" {
-    command = "bash ${path.cwd}/../../../../../src/frontend/artifact_push.sh carshub-frontend-registry-${var.env}-${var.region} ${var.region} http://${module.carshub_backend_lb.dns_name} ${module.carshub_media_cloudfront_distribution.domain_name}"
+    command = "bash ${path.cwd}/../../../../../src/frontend/artifact_push.sh carshub-frontend-registry-${var.env}-${var.region} ${var.region} http://${module.carshub_backend_lb.dns_name} https://google.com"
+    # command = "bash ${path.cwd}/../../../../../src/frontend/artifact_push.sh carshub-frontend-registry-${var.env}-${var.region} ${var.region} http://${module.carshub_backend_lb.dns_name} ${module.carshub_media_cloudfront_distribution.domain_name}"
   }
 
   depends_on = [
@@ -593,7 +615,7 @@ module "carshub_db" {
   # storage_throughput = 125
 
   engine                     = "mysql"
-  engine_version             = "8.0.40"
+  engine_version             = "8.0"
   instance_class             = "db.r6g.large"
   auto_minor_version_upgrade = true
 
@@ -689,7 +711,7 @@ module "carshub_db" {
 # -----------------------------------------------------------------------------------------
 module "carshub_media_bucket" {
   source      = "../../../modules/s3"
-  bucket_name = "carshub-media-bucket-${var.env}-${var.region}"
+  bucket_name = local.media_bucket_name
   objects = [
     {
       key    = "images/"
@@ -703,7 +725,8 @@ module "carshub_media_bucket" {
   versioning_enabled = "Enabled"
   cors = [
     {
-      allowed_headers = ["${module.carshub_media_cloudfront_distribution.domain_name}"]
+      # allowed_headers = ["${module.carshub_media_cloudfront_distribution.domain_name}"]
+      allowed_headers = ["*"]
       allowed_methods = ["GET"]
       allowed_origins = ["*"]
       max_age_seconds = 3000
@@ -727,11 +750,11 @@ module "carshub_media_bucket" {
         },
         "Action" : "s3:GetObject",
         "Resource" : "${module.carshub_media_bucket.arn}/*",
-        "Condition" : {
-          "StringEquals" : {
-            "AWS:SourceArn" : "${module.carshub_media_cloudfront_distribution.arn}"
-          }
-        }
+        # "Condition" : {
+        #   "StringEquals" : {
+        #     "AWS:SourceArn" : "${module.carshub_media_cloudfront_distribution.arn}"
+        #   }
+        # }
       }
     ]
   })
@@ -746,7 +769,7 @@ module "carshub_media_bucket" {
     lambda_function = []
   }
   tags = {
-    Name        = "carshub-media-bucket-${var.env}-${var.region}"
+    Name        = local.media_bucket_name
     Environment = "${var.env}"
     Project     = var.project
   }
@@ -754,7 +777,7 @@ module "carshub_media_bucket" {
 
 module "carshub_media_update_function_code" {
   source      = "../../../modules/s3"
-  bucket_name = "carshub-media-updatefunctioncode${var.env}-${var.region}"
+  bucket_name = local.media_update_code_bucket_name
   objects = [
     {
       key    = "lambda.zip"
@@ -773,7 +796,7 @@ module "carshub_media_update_function_code" {
   versioning_enabled = "Enabled"
   force_destroy      = true
   tags = {
-    Name        = "carshub-media-updatefunctioncode${var.env}-${var.region}"
+    Name        = local.media_update_code_bucket_name
     Environment = "${var.env}"
     Project     = var.project
   }
@@ -781,7 +804,7 @@ module "carshub_media_update_function_code" {
 
 module "carshub_frontend_lb_logs" {
   source      = "../../../modules/s3"
-  bucket_name = "carshub-frontend-lb-logs-${var.env}-${var.region}"
+  bucket_name = local.frontend_lb_logs_bucket_name
   objects     = []
   bucket_policy = jsonencode({
     Version = "2012-10-17"
@@ -793,7 +816,7 @@ module "carshub_frontend_lb_logs" {
           Service = "logging.s3.amazonaws.com"
         }
         Action   = "s3:PutObject"
-        Resource = "arn:aws:s3:::carshub-frontend-lb-logs-${var.env}-${var.region}/*"
+        Resource = "arn:aws:s3:::${local.frontend_lb_logs_bucket_name}/*"
       },
       {
         Sid    = "AWSLogDeliveryAclCheck"
@@ -802,7 +825,7 @@ module "carshub_frontend_lb_logs" {
           Service = "logging.s3.amazonaws.com"
         }
         Action   = "s3:GetBucketAcl"
-        Resource = "arn:aws:s3:::carshub-frontend-lb-logs-${var.env}-${var.region}"
+        Resource = "arn:aws:s3:::${local.frontend_lb_logs_bucket_name}"
       },
       {
         Sid    = "AWSELBAccountWrite"
@@ -811,7 +834,7 @@ module "carshub_frontend_lb_logs" {
           AWS = "arn:aws:iam::${data.aws_elb_service_account.main.id}:root"
         }
         Action   = "s3:PutObject"
-        Resource = "arn:aws:s3:::carshub-frontend-lb-logs-${var.env}-${var.region}/*"
+        Resource = "arn:aws:s3:::${local.frontend_lb_logs_bucket_name}/*"
       }
     ]
   })
@@ -832,7 +855,7 @@ module "carshub_frontend_lb_logs" {
   versioning_enabled = "Enabled"
   force_destroy      = true
   tags = {
-    Name        = "carshub-frontend-lb-logs-${var.env}-${var.region}"
+    Name        = local.frontend_lb_logs_bucket_name
     Environment = "${var.env}"
     Project     = var.project
   }
@@ -840,7 +863,7 @@ module "carshub_frontend_lb_logs" {
 
 module "carshub_backend_lb_logs" {
   source      = "../../../modules/s3"
-  bucket_name = "carshub-backend-lb-logs-${var.env}-${var.region}"
+  bucket_name = local.backend_lb_logs_bucket_name
   objects     = []
   bucket_policy = jsonencode({
     Version = "2012-10-17"
@@ -852,7 +875,7 @@ module "carshub_backend_lb_logs" {
           Service = "logging.s3.amazonaws.com"
         }
         Action   = "s3:PutObject"
-        Resource = "arn:aws:s3:::carshub-backend-lb-logs-${var.env}-${var.region}/*"
+        Resource = "arn:aws:s3:::${local.backend_lb_logs_bucket_name}/*"
       },
       {
         Sid    = "AWSLogDeliveryAclCheck"
@@ -861,7 +884,7 @@ module "carshub_backend_lb_logs" {
           Service = "logging.s3.amazonaws.com"
         }
         Action   = "s3:GetBucketAcl"
-        Resource = "arn:aws:s3:::carshub-backend-lb-logs-${var.env}-${var.region}"
+        Resource = "arn:aws:s3:::${local.backend_lb_logs_bucket_name}"
       },
       {
         Sid    = "AWSELBAccountWrite"
@@ -870,7 +893,7 @@ module "carshub_backend_lb_logs" {
           AWS = "arn:aws:iam::${data.aws_elb_service_account.main.id}:root"
         }
         Action   = "s3:PutObject"
-        Resource = "arn:aws:s3:::carshub-backend-lb-logs-${var.env}-${var.region}/*"
+        Resource = "arn:aws:s3:::${local.backend_lb_logs_bucket_name}/*"
       }
     ]
   })
@@ -891,7 +914,7 @@ module "carshub_backend_lb_logs" {
   versioning_enabled = "Enabled"
   force_destroy      = true
   tags = {
-    Name        = "carshub-backend-lb-logs-${var.env}-${var.region}"
+    Name        = local.backend_lb_logs_bucket_name
     Environment = "${var.env}"
     Project     = var.project
   }
@@ -902,7 +925,7 @@ module "carshub_backend_lb_logs" {
 # -----------------------------------------------------------------------------------------
 module "carshub_media_update_function_code_signed" {
   source             = "../../../modules/s3"
-  bucket_name        = "carshub-media-update-function-code-signed${var.env}-${var.region}"
+  bucket_name        = local.media_signed_code_bucket_name
   versioning_enabled = "Enabled"
   force_destroy      = true
   bucket_policy      = ""
@@ -915,7 +938,7 @@ module "carshub_media_update_function_code_signed" {
     }
   ]
   tags = {
-    Name        = "carshub-media-update-function-code-signed${var.env}-${var.region}"
+    Name        = local.media_signed_code_bucket_name
     Environment = "${var.env}"
     Project     = var.project
   }
@@ -933,6 +956,7 @@ module "carshub_signing_profile" {
   s3_bucket_source                 = module.carshub_media_update_function_code.bucket
   s3_bucket_version                = module.carshub_media_update_function_code.objects[0].version_id
   s3_bucket_destination            = module.carshub_media_update_function_code_signed.bucket
+  depends_on                       = [module.carshub_media_update_function_code]
 }
 
 # -----------------------------------------------------------------------------------------
@@ -1136,59 +1160,59 @@ module "carshub_media_update_function" {
 # -----------------------------------------------------------------------------------------
 # Cloudfront distribution
 # -----------------------------------------------------------------------------------------
-module "carshub_media_cloudfront_distribution" {
-  source                                = "../../../modules/cloudfront"
-  distribution_name                     = "carshub-media-cdn-${var.env}-${var.region}"
-  oac_name                              = "carshub-media-cdn-oac-${var.env}-${var.region}"
-  oac_description                       = "carshub-media-cdn-oac-${var.env}-${var.region}"
-  oac_origin_access_control_origin_type = "s3"
-  oac_signing_behavior                  = "always"
-  oac_signing_protocol                  = "sigv4"
-  enabled                               = true
-  origin = [
-    {
-      origin_id           = "carshub-media-bucket-${var.env}-${var.region}"
-      domain_name         = "carshub-media-bucket-${var.env}.s3.${var.region}.amazonaws.com"
-      connection_attempts = 3
-      connection_timeout  = 10
-    },
-    {
-      origin_id           = "carshub-media-bucket-${var.env}-us-west-2"
-      domain_name         = "carshub-media-bucket-${var.env}.s3.us-west-2.amazonaws.com"
-      connection_attempts = 3
-      connection_timeout  = 10
-    }
-  ]
-  origin_groups = [
-    {
-      origin_id    = "carshub-media-origin-group-${var.env}"
-      status_codes = [500, 502, 503, 504, 403, 404]
-      members = [
-        "carshub-media-bucket-${var.env}-${var.region}",
-        "carshub-media-bucket-${var.env}-us-west-2"
-      ]
-    }
-  ]
-  compress                       = true
-  smooth_streaming               = false
-  target_origin_id               = "carshub-media-origin-group-${var.env}"
-  allowed_methods                = ["GET", "HEAD"]
-  cached_methods                 = ["GET", "HEAD"]
-  viewer_protocol_policy         = "redirect-to-https"
-  min_ttl                        = 0
-  default_ttl                    = 86400
-  max_ttl                        = 31536000
-  price_class                    = "PriceClass_200"
-  forward_cookies                = "all"
-  cloudfront_default_certificate = true
-  geo_restriction_type           = "none"
-  query_string                   = true
-  tags = {
-    Name        = "carshub-media-cdn-${var.env}-${var.region}"
-    Environment = "${var.env}"
-    Project     = var.project
-  }
-}
+# module "m" {
+#   source                                = "../../../modules/cloudfront"
+#   distribution_name                     = "carshub-media-cdn-${var.env}-${var.region}"
+#   oac_name                              = "carshub-media-cdn-oac-${var.env}-${var.region}"
+#   oac_description                       = "carshub-media-cdn-oac-${var.env}-${var.region}"
+#   oac_origin_access_control_origin_type = "s3"
+#   oac_signing_behavior                  = "always"
+#   oac_signing_protocol                  = "sigv4"
+#   enabled                               = true
+#   origin = [
+#     {
+#       origin_id           = "carshub-media-bucket-${var.env}-${var.region}"
+#       domain_name         = "carshub-media-bucket-${var.env}.s3.${var.region}.amazonaws.com"
+#       connection_attempts = 3
+#       connection_timeout  = 10
+#     },
+#     {
+#       origin_id           = "carshub-media-bucket-${var.env}-us-west-2"
+#       domain_name         = "carshub-media-bucket-${var.env}.s3.us-west-2.amazonaws.com"
+#       connection_attempts = 3
+#       connection_timeout  = 10
+#     }
+#   ]
+#   origin_groups = [
+#     {
+#       origin_id    = "carshub-media-origin-group-${var.env}"
+#       status_codes = [500, 502, 503, 504, 403, 404]
+#       members = [
+#         "carshub-media-bucket-${var.env}-${var.region}",
+#         "carshub-media-bucket-${var.env}-us-west-2"
+#       ]
+#     }
+#   ]
+#   compress                       = true
+#   smooth_streaming               = false
+#   target_origin_id               = "carshub-media-origin-group-${var.env}"
+#   allowed_methods                = ["GET", "HEAD"]
+#   cached_methods                 = ["GET", "HEAD"]
+#   viewer_protocol_policy         = "redirect-to-https"
+#   min_ttl                        = 0
+#   default_ttl                    = 86400
+#   max_ttl                        = 31536000
+#   price_class                    = "PriceClass_200"
+#   forward_cookies                = "all"
+#   cloudfront_default_certificate = true
+#   geo_restriction_type           = "none"
+#   query_string                   = true
+#   tags = {
+#     Name        = "carshub-media-cdn-${var.env}-${var.region}"
+#     Environment = "${var.env}"
+#     Project     = var.project
+#   }
+# }
 
 # -----------------------------------------------------------------------------------------
 # Load Balancer Configuration
@@ -1280,7 +1304,7 @@ module "carshub_backend_lb" {
         healthy_threshold   = 3
         interval            = 30
         path                = "/"
-        port                = 80
+        port                = "80"
         protocol            = "HTTP"
         unhealthy_threshold = 3
       }
@@ -1417,10 +1441,13 @@ module "carshub_cluster" {
   cluster_name = "carshub-ecs-cluster-${var.env}-${var.region}"
   services = {
     ecs_frontend = {
-      cpu                    = 2048
-      memory                 = 4096
-      task_exec_iam_role_arn = module.ecs_task_execution_role.arn
-      iam_role_arn           = module.ecs_task_execution_role.arn
+      enable_autoscaling        = false
+      create_task_exec_iam_role = false
+      create_tasks_iam_role     = false
+      task_exec_iam_role_arn    = module.ecs_task_execution_role.arn
+      tasks_iam_role_arn        = module.ecs_task_execution_role.arn
+      cpu                       = 2048
+      memory                    = 4096
       desired_count          = 2
       assign_public_ip       = false
       enable_execute_command = true
@@ -1469,7 +1496,7 @@ module "carshub_cluster" {
             },
             {
               name  = "BASE_URL"
-              value = "${module.carshub_backend_lb.dns_name}"
+              value = "http://${module.carshub_backend_lb.dns_name}"
             }
           ]
           readonlyRootFilesystem = false
@@ -1503,10 +1530,13 @@ module "carshub_cluster" {
     }
 
     ecs_backend = {
-      cpu                    = 2048
-      memory                 = 4096
-      task_exec_iam_role_arn = module.ecs_task_execution_role.arn
-      iam_role_arn           = module.ecs_task_execution_role.arn
+      enable_autoscaling        = false
+      create_task_exec_iam_role = false
+      create_tasks_iam_role     = false
+      task_exec_iam_role_arn    = module.ecs_task_execution_role.arn
+      tasks_iam_role_arn        = module.ecs_task_execution_role.arn
+      cpu                       = 2048
+      memory                    = 4096
       desired_count          = 2
       assign_public_ip       = false
       enable_execute_command = true
@@ -1528,7 +1558,7 @@ module "carshub_cluster" {
           essential = true
           image     = "${module.carshub_backend_container_registry.repository_url}:latest"
           healthCheck = {
-            command     = ["CMD-SHELL", "wget -qO- http://localhost:80 || exit 1"]
+            command     = ["CMD-SHELL", "wget -qO- http://127.0.0.1:80/ || exit 1"]
             interval    = 30
             timeout     = 10
             retries     = 3
@@ -1542,6 +1572,10 @@ module "carshub_cluster" {
             }
           ]
           environment = [
+            {
+              name  = "PORT"
+              value = "80"
+            },
             {
               name  = "DB_PATH"
               value = "${module.carshub_db.address}"
@@ -1611,8 +1645,8 @@ module "carshub_cluster" {
   ]
 }
 
-# Module for Frontend CPU Autoscaling Policy
-module "carshub_frontend_cpu_autoscaling" {
+# Module for Frontend Autoscaling (CPU + Memory)
+module "carshub_frontend_autoscaling" {
   source             = "../../../modules/autoscaling"
   min_capacity       = 2
   max_capacity       = 10
@@ -1663,20 +1697,7 @@ module "carshub_frontend_cpu_autoscaling" {
       }
       predictive_scaling_policy_configuration      = null
       target_tracking_scaling_policy_configuration = null
-    }
-  ]
-  depends_on = [module.carshub_cluster]
-}
-
-module "carshub_frontend_memory_autoscaling" {
-  source             = "../../../modules/autoscaling"
-  min_capacity       = 2
-  max_capacity       = 10
-  resource_id        = "service/${module.carshub_cluster.cluster_name}/${module.carshub_cluster.services["ecs_frontend"].name}"
-  scalable_dimension = "ecs:service:DesiredCount"
-  service_namespace  = "ecs"
-
-  policies = [
+    },
     {
       name        = "carshub-frontend-memory-scale-up-${var.env}"
       policy_type = "StepScaling"
@@ -1721,11 +1742,11 @@ module "carshub_frontend_memory_autoscaling" {
       target_tracking_scaling_policy_configuration = null
     }
   ]
-
   depends_on = [module.carshub_cluster]
 }
 
-module "carshub_backend_cpu_autoscaling" {
+# Module for Backend Autoscaling (CPU + Memory)
+module "carshub_backend_autoscaling" {
   source             = "../../../modules/autoscaling"
   min_capacity       = 2
   max_capacity       = 10
@@ -1776,21 +1797,7 @@ module "carshub_backend_cpu_autoscaling" {
       }
       predictive_scaling_policy_configuration      = null
       target_tracking_scaling_policy_configuration = null
-    }
-  ]
-
-  depends_on = [module.carshub_cluster]
-}
-
-module "carshub_backend_memory_autoscaling" {
-  source             = "../../../modules/autoscaling"
-  min_capacity       = 2
-  max_capacity       = 10
-  resource_id        = "service/${module.carshub_cluster.cluster_name}/${module.carshub_cluster.services["ecs_backend"].name}"
-  scalable_dimension = "ecs:service:DesiredCount"
-  service_namespace  = "ecs"
-
-  policies = [
+    },
     {
       name        = "carshub-backend-memory-scale-up-${var.env}"
       policy_type = "StepScaling"
@@ -2267,103 +2274,103 @@ module "rds_swap_usage_alarm" {
 # -----------------------------------------------------------------------------------------
 # Resource Group Configuration
 # -----------------------------------------------------------------------------------------
-resource "aws_resourcegroups_group" "carshub_resource_group" {
-  name = "carshub-resource-group-${var.env}"
+# resource "aws_resourcegroups_group" "carshub_resource_group" {
+#   name = "carshub-resource-group-${var.env}"
 
-  resource_query {
-    query = <<JSON
-{
-  "ResourceTypeFilters": ["AWS::AllSupported"],
-  "TagFilters": [
-    {
-      "Key": "Project",
-      "Values": ["${var.project}"]
-    }
-  ]
-}
-JSON
-  }
-}
+#   resource_query {
+#     query = <<JSON
+# {
+#   "ResourceTypeFilters": ["AWS::AllSupported"],
+#   "TagFilters": [
+#     {
+#       "Key": "Project",
+#       "Values": ["${var.project}"]
+#     }
+#   ]
+# }
+# JSON
+#   }
+# }
 
 
-# -----------------------------------------------------------------------------------------
-# WAF Configuration
-# -----------------------------------------------------------------------------------------
-module "carshub_waf" {
-  source = "../../../modules/waf"
+# # -----------------------------------------------------------------------------------------
+# # WAF Configuration
+# # -----------------------------------------------------------------------------------------
+# module "carshub_waf" {
+#   source = "../../../modules/waf"
 
-  # Naming — matches your existing convention
-  name = "carshub-waf-${var.env}-${var.region}"
+#   # Naming — matches your existing convention
+#   name = "carshub-waf-${var.env}-${var.region}"
 
-  # Attach WAF to the public-facing Frontend ALB
-  # Replace with your actual frontend ALB ARN output
-  frontend_alb_arn = module.carshub_frontend_lb.arn
+#   # Attach WAF to the public-facing Frontend ALB
+#   # Replace with your actual frontend ALB ARN output
+#   frontend_alb_arn = module.carshub_frontend_lb.arn
 
-  # Reuse your existing SNS alarm topic — no new infra needed
-  alarm_topic_arn = module.carshub_alarm_notifications.topic_arn
+#   # Reuse your existing SNS alarm topic — no new infra needed
+#   alarm_topic_arn = module.carshub_alarm_notifications.topic_arn
 
-  # Account + region for log resource policy
-  account_id = data.aws_caller_identity.current.account_id
-  aws_region = var.region
+#   # Account + region for log resource policy
+#   account_id = data.aws_caller_identity.current.account_id
+#   aws_region = var.region
 
-  # ---------------------------------------------------
-  # IP Management
-  # ---------------------------------------------------
+#   # ---------------------------------------------------
+#   # IP Management
+#   # ---------------------------------------------------
 
-  # IPs to always block — add known attackers, threat intel here
-  blocked_ip_list = [
-    # "203.0.113.0/24",  # Example: known scanner range
-  ]
+#   # IPs to always block — add known attackers, threat intel here
+#   blocked_ip_list = [
+#     # "203.0.113.0/24",  # Example: known scanner range
+#   ]
 
-  # IPs that bypass rate limiting — office, CI/CD, trusted partners
-  allowed_ip_list = [
-    # "YOUR_OFFICE_IP/32",
-    # "YOUR_CICD_RUNNER_IP/32",
-  ]
+#   # IPs that bypass rate limiting — office, CI/CD, trusted partners
+#   allowed_ip_list = [
+#     # "YOUR_OFFICE_IP/32",
+#     # "YOUR_CICD_RUNNER_IP/32",
+#   ]
 
-  # ---------------------------------------------------
-  # Geo Blocking
-  # ---------------------------------------------------
+#   # ---------------------------------------------------
+#   # Geo Blocking
+#   # ---------------------------------------------------
 
-  # Block countries not in your target market
-  # Remove or leave empty [] if you serve global traffic
-  blocked_countries = [
-    # "KP",  # North Korea
-    # "IR",  # Iran
-    # "CU",  # Cuba
-    # "SY",  # Syria
-  ]
+#   # Block countries not in your target market
+#   # Remove or leave empty [] if you serve global traffic
+#   blocked_countries = [
+#     # "KP",  # North Korea
+#     # "IR",  # Iran
+#     # "CU",  # Cuba
+#     # "SY",  # Syria
+#   ]
 
-  # ---------------------------------------------------
-  # Rate Limiting
-  # ---------------------------------------------------
+#   # ---------------------------------------------------
+#   # Rate Limiting
+#   # ---------------------------------------------------
 
-  # General rate limit per IP per 5-minute window
-  # 2000 = ~6-7 requests/second — comfortable for real users, blocks bots
-  rate_limit_requests = 2000
+#   # General rate limit per IP per 5-minute window
+#   # 2000 = ~6-7 requests/second — comfortable for real users, blocks bots
+#   rate_limit_requests = 2000
 
-  # Auth endpoints get a much tighter limit
-  # 100 = ~1 login attempt every 3 seconds per IP
-  auth_rate_limit_requests = 100
+#   # Auth endpoints get a much tighter limit
+#   # 100 = ~1 login attempt every 3 seconds per IP
+#   auth_rate_limit_requests = 100
 
-  # ---------------------------------------------------
-  # Logging
-  # ---------------------------------------------------
+#   # ---------------------------------------------------
+#   # Logging
+#   # ---------------------------------------------------
 
-  # How long to keep WAF logs in CloudWatch
-  log_retention_days = 90
+#   # How long to keep WAF logs in CloudWatch
+#   log_retention_days = 90
 
-  # ---------------------------------------------------
-  # Alarm Thresholds — tune after observing normal traffic
-  # ---------------------------------------------------
+#   # ---------------------------------------------------
+#   # Alarm Thresholds — tune after observing normal traffic
+#   # ---------------------------------------------------
 
-  alarm_blocked_requests_threshold = 500
-  alarm_rate_limit_threshold       = 100
-  alarm_auth_rate_limit_threshold  = 20
+#   alarm_blocked_requests_threshold = 500
+#   alarm_rate_limit_threshold       = 100
+#   alarm_auth_rate_limit_threshold  = 20
 
-  tags = {
-    Name        = "carshub-waf-${var.env}-${var.region}"
-    Environment = var.env
-    Project     = var.project
-  }
-}
+#   tags = {
+#     Name        = "carshub-waf-${var.env}-${var.region}"
+#     Environment = var.env
+#     Project     = var.project
+#   }
+# }

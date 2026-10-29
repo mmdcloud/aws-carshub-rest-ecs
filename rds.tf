@@ -46,7 +46,7 @@ module "carshub_db" {
   # storage_throughput = 125
 
   engine                     = "mysql"
-  engine_version             = "8.0.40"
+  engine_version             = "8.0"
   instance_class             = "db.r6g.large"
   auto_minor_version_upgrade = true
 
