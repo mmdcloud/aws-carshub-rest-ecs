@@ -97,12 +97,12 @@ module "carshub_backend_lb_sg" {
   vpc_id = module.carshub_vpc.vpc_id
   ingress_rules = [
     {
-      description     = "HTTP Traffic"
+      description     = "HTTP Traffic (port 80)"
       from_port       = 80
       to_port         = 80
       protocol        = "tcp"
       security_groups = [module.carshub_ecs_frontend_sg.id]
-      cidr_blocks     = []
+      cidr_blocks     = ["0.0.0.0/0"]
     },
     {
       description     = "HTTPS Traffic"
@@ -110,7 +110,7 @@ module "carshub_backend_lb_sg" {
       to_port         = 443
       protocol        = "tcp"
       security_groups = [module.carshub_ecs_frontend_sg.id]
-      cidr_blocks     = []
+      cidr_blocks     = ["0.0.0.0/0"]
     }
   ]
   egress_rules = [
@@ -166,14 +166,6 @@ module "carshub_ecs_backend_sg" {
   name   = "carshub-ecs_backend-sg-${var.env}-${var.region}"
   vpc_id = module.carshub_vpc.vpc_id
   ingress_rules = [
-    {
-      description     = "Traffic from Backend ALB (port 80)"
-      from_port       = 80
-      to_port         = 80
-      protocol        = "tcp"
-      security_groups = [module.carshub_backend_lb_sg.id]
-      cidr_blocks     = []
-    },
     {
       description     = "Traffic from Backend ALB (port 3000)"
       from_port       = 3000
@@ -468,7 +460,8 @@ module "carshub_frontend_container_registry" {
 resource "null_resource" "build_and_push_frontend" {
   # Re-trigger build if any of these change
   triggers = {
-    image_tag = "latest"
+    backend_url = "http://${module.carshub_backend_lb.dns_name}"
+    image_tag   = "latest"
   }
 
   provisioner "local-exec" {
@@ -478,6 +471,7 @@ resource "null_resource" "build_and_push_frontend" {
 
   depends_on = [
     module.carshub_frontend_container_registry,
+    module.carshub_backend_lb,
   ]
 }
 
@@ -533,6 +527,7 @@ module "carshub_backend_container_registry" {
 resource "null_resource" "build_and_push_backend" {
   # Re-trigger build if any of these change
   triggers = {
+    code_hash = filemd5("${path.cwd}/../../../../../src/backend/api/src/main.ts")
     image_tag = "latest"
   }
 
@@ -606,8 +601,8 @@ module "carshub_db" {
   db_name    = "carshubdb${var.env}useast1"
   identifier = "carshub-db-${var.env}useast1"
 
-  allocated_storage     = 100
-  max_allocated_storage = 500
+  allocated_storage     = 20
+  max_allocated_storage = 50
   storage_type          = "gp3"
   storage_encrypted     = true
   # kms_key_id                            = module.carshub_kms_rds.arn 
@@ -616,7 +611,7 @@ module "carshub_db" {
 
   engine                     = "mysql"
   engine_version             = "8.0"
-  instance_class             = "db.r6g.large"
+  instance_class             = "db.t4g.medium"
   auto_minor_version_upgrade = true
 
   deletion_protection = false
@@ -1285,7 +1280,7 @@ module "carshub_backend_lb" {
     bucket = "${module.carshub_backend_lb_logs.bucket}"
   }
   listeners = {
-    carshub_backend_lb_http_listener = {
+    carshub_backend_lb_listener = {
       port     = 80
       protocol = "HTTP"
       forward = {
@@ -1296,7 +1291,7 @@ module "carshub_backend_lb" {
   target_groups = {
     carshub_backend_lb_target_group = {
       backend_protocol = "HTTP"
-      backend_port     = 80
+      backend_port     = 3000
       target_type      = "ip"
       vpc_id           = module.carshub_vpc.vpc_id
       health_check = {
@@ -1304,7 +1299,7 @@ module "carshub_backend_lb" {
         healthy_threshold   = 3
         interval            = 30
         path                = "/"
-        port                = "80"
+        port                = "3000"
         protocol            = "HTTP"
         unhealthy_threshold = 3
       }
@@ -1448,9 +1443,9 @@ module "carshub_cluster" {
       tasks_iam_role_arn        = module.ecs_task_execution_role.arn
       cpu                       = 2048
       memory                    = 4096
-      desired_count          = 2
-      assign_public_ip       = false
-      enable_execute_command = true
+      desired_count             = 2
+      assign_public_ip          = false
+      enable_execute_command    = true
       deployment_controller = {
         type = "ECS"
       }
@@ -1537,9 +1532,9 @@ module "carshub_cluster" {
       tasks_iam_role_arn        = module.ecs_task_execution_role.arn
       cpu                       = 2048
       memory                    = 4096
-      desired_count          = 2
-      assign_public_ip       = false
-      enable_execute_command = true
+      desired_count             = 2
+      assign_public_ip          = false
+      enable_execute_command    = true
       deployment_controller = {
         type = "ECS"
       }
@@ -1558,7 +1553,7 @@ module "carshub_cluster" {
           essential = true
           image     = "${module.carshub_backend_container_registry.repository_url}:latest"
           healthCheck = {
-            command     = ["CMD-SHELL", "wget -qO- http://127.0.0.1:80/ || exit 1"]
+            command     = ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/ || exit 1"]
             interval    = 30
             timeout     = 10
             retries     = 3
@@ -1574,7 +1569,7 @@ module "carshub_cluster" {
           environment = [
             {
               name  = "PORT"
-              value = "80"
+              value = "3000"
             },
             {
               name  = "DB_PATH"
@@ -1598,8 +1593,8 @@ module "carshub_cluster" {
           portMappings = [
             {
               name          = "ecs_backend"
-              containerPort = 80
-              hostPort      = 80
+              containerPort = 3000
+              hostPort      = 3000
               protocol      = "tcp"
             }
           ]
@@ -1624,7 +1619,7 @@ module "carshub_cluster" {
         service = {
           target_group_arn = module.carshub_backend_lb.target_groups["carshub_backend_lb_target_group"].arn
           container_name   = "ecs_backend"
-          container_port   = 80
+          container_port   = 3000
         }
       }
       subnet_ids                    = module.carshub_vpc.private_subnets
