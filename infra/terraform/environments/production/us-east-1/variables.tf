@@ -38,3 +38,15 @@ variable "azs" {
   type        = list(string)
   description = "Availability Zones"
 }
+
+variable "domain_name" {
+  type        = string
+  description = "Domain name for ACM Certificate and Route53"
+  default     = "carshub.com"
+}
+
+variable "certificate_arn" {
+  type        = string
+  description = "Existing ACM Certificate ARN. If empty, a managed ACM certificate is created."
+  default     = ""
+}

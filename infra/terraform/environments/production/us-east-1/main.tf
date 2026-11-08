@@ -14,7 +14,7 @@ resource "random_id" "id" {
 }
 
 # -----------------------------------------------------------------------------------------
-# Globally unique S3 bucket naming
+# Globally unique S3 bucket naming and certificates
 # -----------------------------------------------------------------------------------------
 locals {
   account_id = data.aws_caller_identity.current.account_id
@@ -24,6 +24,31 @@ locals {
   frontend_lb_logs_bucket_name  = "carshub-frontend-lb-logs-${local.account_id}-${var.env}-${var.region}"
   backend_lb_logs_bucket_name   = "carshub-backend-lb-logs-${local.account_id}-${var.env}-${var.region}"
   media_signed_code_bucket_name = "carshub-media-signed-code-${local.account_id}-${var.env}-${var.region}"
+
+  certificate_arn = var.certificate_arn != "" ? var.certificate_arn : (length(aws_acm_certificate.cert) > 0 ? aws_acm_certificate.cert[0].arn : "")
+}
+
+# -----------------------------------------------------------------------------------------
+# ACM Certificate for HTTPS/TLS
+# -----------------------------------------------------------------------------------------
+resource "aws_acm_certificate" "cert" {
+  count             = var.certificate_arn == "" ? 1 : 0
+  domain_name       = var.domain_name
+  validation_method = "DNS"
+
+  subject_alternative_names = [
+    "*.${var.domain_name}"
+  ]
+
+  tags = {
+    Name        = "carshub-acm-cert-${var.env}-${var.region}"
+    Environment = var.env
+    Project     = var.project
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 # -----------------------------------------------------------------------------------------
@@ -965,12 +990,31 @@ resource "aws_lambda_event_source_mapping" "sqs_event_trigger" {
   maximum_batching_window_in_seconds = 60
 }
 
-# SQS Queue for buffering S3 events
+# SQS Dead-Letter Queue (DLQ) for failed media events
+module "carshub_media_events_dlq" {
+  source                     = "../../../modules/sqs"
+  queue_name                 = "carshub-media-events-dlq-${var.env}-${var.region}"
+  delay_seconds              = 0
+  maxReceiveCount            = 3
+  max_message_size           = 262144
+  message_retention_seconds  = 1209600 # 14 days retention for inspection
+  visibility_timeout_seconds = 180
+  receive_wait_time_seconds  = 20
+  policy                     = ""
+  tags = {
+    Name        = "carshub-media-events-dlq-${var.env}-${var.region}"
+    Environment = "${var.env}"
+    Project     = var.project
+  }
+}
+
+# SQS Queue for buffering S3 events with DLQ redrive policy
 module "carshub_media_events_queue" {
   source                     = "../../../modules/sqs"
   queue_name                 = "carshub-media-events-queue-${var.env}-${var.region}"
   delay_seconds              = 0
   maxReceiveCount            = 3
+  dead_letter_target_arn     = module.carshub_media_events_dlq.arn
   max_message_size           = 262144
   message_retention_seconds  = 345600
   visibility_timeout_seconds = 180
@@ -996,23 +1040,7 @@ module "carshub_media_events_queue" {
     Environment = "${var.env}"
     Project     = var.project
   }
-}
-
-module "carshub_media_events_dlq" {
-  source                     = "../../../modules/sqs"
-  queue_name                 = "carshub-media-events-dlq-${var.env}-${var.region}"
-  delay_seconds              = 0
-  maxReceiveCount            = 3
-  max_message_size           = 262144
-  message_retention_seconds  = 345600
-  visibility_timeout_seconds = 180
-  receive_wait_time_seconds  = 20
-  policy                     = ""
-  tags = {
-    Name        = "carshub-media-events-dlq-${var.env}-${var.region}"
-    Environment = "${var.env}"
-    Project     = var.project
-  }
+  depends_on = [module.carshub_media_events_dlq]
 }
 
 # -----------------------------------------------------------------------------------------
@@ -1141,7 +1169,7 @@ module "carshub_media_update_function" {
   }
   handler                 = "lambda.lambda_handler"
   runtime                 = "python3.12"
-  s3_bucket               = module.carshub_media_update_function_code.bucket
+  s3_bucket               = module.carshub_media_update_function_code_signed.bucket
   s3_key                  = "lambda.zip"
   layers                  = [aws_lambda_layer_version.python_layer.arn]
   code_signing_config_arn = module.carshub_signing_profile.config_arn
@@ -1232,6 +1260,17 @@ module "carshub_frontend_lb" {
     carshub_frontend_lb_http_listener = {
       port     = 80
       protocol = "HTTP"
+      redirect = {
+        port        = "443"
+        protocol    = "HTTPS"
+        status_code = "HTTP_301"
+      }
+    }
+    carshub_frontend_lb_https_listener = {
+      port            = 443
+      protocol        = "HTTPS"
+      ssl_policy      = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+      certificate_arn = local.certificate_arn
       forward = {
         target_group_key = "carshub_frontend_lb_target_group"
       }
@@ -1280,9 +1319,18 @@ module "carshub_backend_lb" {
     bucket = "${module.carshub_backend_lb_logs.bucket}"
   }
   listeners = {
-    carshub_backend_lb_listener = {
+    carshub_backend_lb_http_listener = {
       port     = 80
       protocol = "HTTP"
+      forward = {
+        target_group_key = "carshub_backend_lb_target_group"
+      }
+    }
+    carshub_backend_lb_https_listener = {
+      port            = 443
+      protocol        = "HTTPS"
+      ssl_policy      = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+      certificate_arn = local.certificate_arn
       forward = {
         target_group_key = "carshub_backend_lb_target_group"
       }
@@ -1315,14 +1363,78 @@ module "carshub_backend_lb" {
 }
 
 # ---------------------------------------------------------------------
-# ECS configuration
+# ECS Configuration & IAM Roles (Separated Execution vs Task Role)
 # ---------------------------------------------------------------------
+# Task Execution Role: Used strictly by the ECS Agent (pulling images, fetching secrets, logging)
 module "ecs_task_execution_role" {
   source             = "../../../modules/iam"
   role_name          = "carshub-ecs-task-execution-role-${var.env}-${var.region}"
-  role_description   = "IAM role for ECS task execution"
+  role_description   = "IAM execution role for ECS container agent"
   policy_name        = "carshub-ecs-task-execution-policy-${var.env}-${var.region}"
-  policy_description = "IAM policy for ECS task execution"
+  policy_description = "IAM policy for ECS task execution agent"
+  assume_role_policy = <<EOF
+    {
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Action": "sts:AssumeRole",
+                "Principal": {
+                  "Service": "ecs-tasks.amazonaws.com"
+                },
+                "Effect": "Allow",
+                "Sid": ""
+            }
+        ]
+    }
+    EOF
+  policy             = <<EOF
+    {
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+              "Effect": "Allow",
+              "Action": [
+                "secretsmanager:GetSecretValue",
+                "secretsmanager:DescribeSecret"
+              ],
+              "Resource": [
+                "${module.carshub_db_credentials.arn}*"
+              ]
+            },
+            {
+                "Action": [
+                  "logs:CreateLogGroup",
+                  "logs:CreateLogStream",
+                  "logs:PutLogEvents",
+                  "logs:DescribeLogGroups",
+                  "logs:DescribeLogStreams"
+                ],
+                "Resource": "*",
+                "Effect": "Allow"
+            }
+        ]
+    }
+    EOF
+  tags = {
+    Name        = "carshub-ecs-task-execution-role-${var.env}-${var.region}"
+    Environment = "${var.env}"
+    Project     = var.project
+  }
+}
+
+# ECR-ECS execution policy attachment 
+resource "aws_iam_role_policy_attachment" "ecs_task_execution_role_policy_attachment" {
+  role       = module.ecs_task_execution_role.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+}
+
+# Task Role: Used strictly by application processes running inside the containers
+module "ecs_task_role" {
+  source             = "../../../modules/iam"
+  role_name          = "carshub-ecs-task-role-${var.env}-${var.region}"
+  role_description   = "IAM task role for application running inside ECS container"
+  policy_name        = "carshub-ecs-task-policy-${var.env}-${var.region}"
+  policy_description = "IAM policy for application running inside ECS container"
   assume_role_policy = <<EOF
     {
         "Version": "2012-10-17",
@@ -1354,56 +1466,28 @@ module "ecs_task_execution_role" {
             },
             {
                 "Action": [
-                  "s3:PutObject"
+                  "s3:PutObject",
+                  "s3:GetObject"
                 ],
                 "Resource": [
                   "${module.carshub_media_bucket.arn}",
                   "${module.carshub_media_bucket.arn}/*"
                 ],
                 "Effect": "Allow"
-            },
-            {
-              "Effect": "Allow",
-              "Action": [
-                "secretsmanager:GetSecretValue",
-                "secretsmanager:DescribeSecret"
-              ],
-              "Resource": [
-                "${module.carshub_db_credentials.arn}*"
-              ]
-            },
-            {
-                "Action": [
-                  "logs:CreateLogGroup",
-                  "logs:CreateLogStream",
-                  "logs:PutLogEvents",
-                  "logs:DescribeLogGroups",
-                  "logs:CreateLogStream",
-                  "logs:DescribeLogStreams",
-                  "logs:PutLogEvents"
-                ],
-                "Resource": "*",
-                "Effect": "Allow"
             }
         ]
     }
     EOF
   tags = {
-    Name        = "carshub-ecs-task-execution-role-${var.env}-${var.region}"
+    Name        = "carshub-ecs-task-role-${var.env}-${var.region}"
     Environment = "${var.env}"
     Project     = var.project
   }
 }
 
-# ECR-ECS policy attachment 
-resource "aws_iam_role_policy_attachment" "ecs_task_execution_role_policy_attachment" {
-  role       = module.ecs_task_execution_role.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
-}
-
-# X-Ray tracing
+# X-Ray tracing for application task
 resource "aws_iam_role_policy_attachment" "ecs_task_xray" {
-  role       = module.ecs_task_execution_role.name
+  role       = module.ecs_task_role.name
   policy_arn = "arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess"
 }
 
@@ -1440,7 +1524,7 @@ module "carshub_cluster" {
       create_task_exec_iam_role = false
       create_tasks_iam_role     = false
       task_exec_iam_role_arn    = module.ecs_task_execution_role.arn
-      tasks_iam_role_arn        = module.ecs_task_execution_role.arn
+      tasks_iam_role_arn        = module.ecs_task_role.arn
       cpu                       = 2048
       memory                    = 4096
       desired_count             = 2
@@ -1529,7 +1613,7 @@ module "carshub_cluster" {
       create_task_exec_iam_role = false
       create_tasks_iam_role     = false
       task_exec_iam_role_arn    = module.ecs_task_execution_role.arn
-      tasks_iam_role_arn        = module.ecs_task_execution_role.arn
+      tasks_iam_role_arn        = module.ecs_task_role.arn
       cpu                       = 2048
       memory                    = 4096
       desired_count             = 2
@@ -1636,11 +1720,12 @@ module "carshub_cluster" {
   depends_on = [
     module.carshub_frontend_ecs_log_group,
     module.carshub_backend_ecs_log_group,
-    module.ecs_task_execution_role
+    module.ecs_task_execution_role,
+    module.ecs_task_role
   ]
 }
 
-# Module for Frontend Autoscaling (CPU + Memory)
+# Module for Frontend Autoscaling
 module "carshub_frontend_autoscaling" {
   source             = "../../../modules/autoscaling"
   min_capacity       = 2
@@ -1648,99 +1733,23 @@ module "carshub_frontend_autoscaling" {
   resource_id        = "service/${module.carshub_cluster.cluster_name}/${module.carshub_cluster.services["ecs_frontend"].name}"
   scalable_dimension = "ecs:service:DesiredCount"
   service_namespace  = "ecs"
-
   policies = [
     {
-      name        = "carshub-frontend-cpu-scale-up-${var.env}"
-      policy_type = "StepScaling"
-      step_scaling_policy_configuration = {
-        adjustment_type          = "ChangeInCapacity"
-        cooldown                 = 60
-        metric_aggregation_type  = "Average"
-        min_adjustment_magnitude = null
-        step_adjustment = [
-          {
-            metric_interval_lower_bound = 0
-            metric_interval_upper_bound = 20
-            scaling_adjustment          = 1
-          },
-          {
-            metric_interval_lower_bound = 20
-            metric_interval_upper_bound = null
-            scaling_adjustment          = 2
-          }
-        ]
+      name        = "carshub-frontend-cpu-target-tracking-${var.env}"
+      policy_type = "TargetTrackingScaling"
+      target_tracking_scaling_policy_configuration = {
+        target_value       = 70.0
+        scale_in_cooldown  = 300
+        scale_out_cooldown = 60
+        predefined_metric_specification = {
+          predefined_metric_type = "ECSServiceAverageCPUUtilization"
+        }
       }
-      predictive_scaling_policy_configuration      = null
-      target_tracking_scaling_policy_configuration = null
-    },
-    {
-      name        = "carshub-frontend-cpu-scale-down-${var.env}"
-      policy_type = "StepScaling"
-      step_scaling_policy_configuration = {
-        adjustment_type          = "ChangeInCapacity"
-        cooldown                 = 300
-        metric_aggregation_type  = "Average"
-        min_adjustment_magnitude = null
-        step_adjustment = [
-          {
-            metric_interval_lower_bound = null
-            metric_interval_upper_bound = 0
-            scaling_adjustment          = -1
-          }
-        ]
-      }
-      predictive_scaling_policy_configuration      = null
-      target_tracking_scaling_policy_configuration = null
-    },
-    {
-      name        = "carshub-frontend-memory-scale-up-${var.env}"
-      policy_type = "StepScaling"
-      step_scaling_policy_configuration = {
-        adjustment_type          = "ChangeInCapacity"
-        cooldown                 = 60
-        metric_aggregation_type  = "Average"
-        min_adjustment_magnitude = null
-        step_adjustment = [
-          {
-            metric_interval_lower_bound = 0
-            metric_interval_upper_bound = 20
-            scaling_adjustment          = 1
-          },
-          {
-            metric_interval_lower_bound = 20
-            metric_interval_upper_bound = null
-            scaling_adjustment          = 2
-          }
-        ]
-      }
-      predictive_scaling_policy_configuration      = null
-      target_tracking_scaling_policy_configuration = null
-    },
-    {
-      name        = "carshub-frontend-memory-scale-down-${var.env}"
-      policy_type = "StepScaling"
-      step_scaling_policy_configuration = {
-        adjustment_type          = "ChangeInCapacity"
-        cooldown                 = 300
-        metric_aggregation_type  = "Average"
-        min_adjustment_magnitude = null
-        step_adjustment = [
-          {
-            metric_interval_lower_bound = null
-            metric_interval_upper_bound = 0
-            scaling_adjustment          = -1
-          }
-        ]
-      }
-      predictive_scaling_policy_configuration      = null
-      target_tracking_scaling_policy_configuration = null
     }
   ]
-  depends_on = [module.carshub_cluster]
 }
 
-# Module for Backend Autoscaling (CPU + Memory)
+# Module for Backend Autoscaling
 module "carshub_backend_autoscaling" {
   source             = "../../../modules/autoscaling"
   min_capacity       = 2
@@ -1748,97 +1757,20 @@ module "carshub_backend_autoscaling" {
   resource_id        = "service/${module.carshub_cluster.cluster_name}/${module.carshub_cluster.services["ecs_backend"].name}"
   scalable_dimension = "ecs:service:DesiredCount"
   service_namespace  = "ecs"
-
   policies = [
     {
-      name        = "carshub-backend-cpu-scale-up-${var.env}"
-      policy_type = "StepScaling"
-      step_scaling_policy_configuration = {
-        adjustment_type          = "ChangeInCapacity"
-        cooldown                 = 60
-        metric_aggregation_type  = "Average"
-        min_adjustment_magnitude = null
-        step_adjustment = [
-          {
-            metric_interval_lower_bound = 0
-            metric_interval_upper_bound = 20
-            scaling_adjustment          = 1
-          },
-          {
-            metric_interval_lower_bound = 20
-            metric_interval_upper_bound = null
-            scaling_adjustment          = 2
-          }
-        ]
+      name        = "carshub-backend-cpu-target-tracking-${var.env}"
+      policy_type = "TargetTrackingScaling"
+      target_tracking_scaling_policy_configuration = {
+        target_value       = 70.0
+        scale_in_cooldown  = 300
+        scale_out_cooldown = 60
+        predefined_metric_specification = {
+          predefined_metric_type = "ECSServiceAverageCPUUtilization"
+        }
       }
-      predictive_scaling_policy_configuration      = null
-      target_tracking_scaling_policy_configuration = null
-    },
-    {
-      name        = "carshub-backend-cpu-scale-down-${var.env}"
-      policy_type = "StepScaling"
-      step_scaling_policy_configuration = {
-        adjustment_type          = "ChangeInCapacity"
-        cooldown                 = 300
-        metric_aggregation_type  = "Average"
-        min_adjustment_magnitude = null
-        step_adjustment = [
-          {
-            metric_interval_lower_bound = null
-            metric_interval_upper_bound = 0
-            scaling_adjustment          = -1
-          }
-        ]
-      }
-      predictive_scaling_policy_configuration      = null
-      target_tracking_scaling_policy_configuration = null
-    },
-    {
-      name        = "carshub-backend-memory-scale-up-${var.env}"
-      policy_type = "StepScaling"
-      step_scaling_policy_configuration = {
-        adjustment_type          = "ChangeInCapacity"
-        cooldown                 = 60
-        metric_aggregation_type  = "Average"
-        min_adjustment_magnitude = null
-        step_adjustment = [
-          {
-            metric_interval_lower_bound = 0
-            metric_interval_upper_bound = 20
-            scaling_adjustment          = 1
-          },
-          {
-            metric_interval_lower_bound = 20
-            metric_interval_upper_bound = null
-            scaling_adjustment          = 2
-          }
-        ]
-      }
-      predictive_scaling_policy_configuration      = null
-      target_tracking_scaling_policy_configuration = null
-    },
-    {
-      name        = "carshub-backend-memory-scale-down-${var.env}"
-      policy_type = "StepScaling"
-      step_scaling_policy_configuration = {
-        adjustment_type          = "ChangeInCapacity"
-        cooldown                 = 300
-        metric_aggregation_type  = "Average"
-        min_adjustment_magnitude = null
-        step_adjustment = [
-          {
-            metric_interval_lower_bound = null
-            metric_interval_upper_bound = 0
-            scaling_adjustment          = -1
-          }
-        ]
-      }
-      predictive_scaling_policy_configuration      = null
-      target_tracking_scaling_policy_configuration = null
     }
   ]
-
-  depends_on = [module.carshub_cluster]
 }
 
 # -----------------------------------------------------------------------------------------
@@ -2208,7 +2140,7 @@ module "rds_high_cpu" {
   alarm_actions       = [module.carshub_alarm_notifications.topic_arn]
   ok_actions          = [module.carshub_alarm_notifications.topic_arn]
   dimensions = {
-    DBInstanceIdentifier = module.carshub_db.name
+    DBInstanceIdentifier = module.carshub_db.id
   }
 }
 
@@ -2226,7 +2158,7 @@ module "rds_low_storage" {
   alarm_actions       = [module.carshub_alarm_notifications.topic_arn]
   ok_actions          = [module.carshub_alarm_notifications.topic_arn]
   dimensions = {
-    DBInstanceIdentifier = module.carshub_db.name
+    DBInstanceIdentifier = module.carshub_db.id
   }
 }
 
@@ -2244,7 +2176,7 @@ module "rds_high_connections" {
   alarm_actions       = [module.carshub_alarm_notifications.topic_arn]
   ok_actions          = [module.carshub_alarm_notifications.topic_arn]
   dimensions = {
-    DBInstanceIdentifier = module.carshub_db.name
+    DBInstanceIdentifier = module.carshub_db.id
   }
 }
 
